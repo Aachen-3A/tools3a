@@ -1,0 +1,3 @@
+#!/bin/bash
+source /afs/cern.ch/cms/ccs/wm/scripts/Crab/crab.sh
+submit.py $*
