@@ -6,7 +6,6 @@ if [ $(uname -i) != x86_64 ]; then
 fi
 
 source /afs/cern.ch/cms/LCG/LCG-2/UI/cms_ui_env_3_2.sh
-#source /afs/cern.ch/cms/ccs/wm/scripts/Crab/crab.sh
-source /net/data_cms/institut_3a/CMS/CRAB_2_7_2_p1/crab.sh
+source /afs/cern.ch/cms/ccs/wm/scripts/Crab/crab.sh
 echo Using CRAB: $(which crab)
 submit.py $*
