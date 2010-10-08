@@ -68,6 +68,12 @@ process = cfo.process
 del cfo
 
 
+#check if the user is not in dcms
+user = os.getenv( 'LOGNAME' )
+dcms_blacklist = [ 'malhotra' ]
+allow_dcms = not user in dcms_blacklist
+
+
 for line in open( samples ):
     line = line[:-1]
     if not line or line.startswith( '#' ): continue
@@ -118,7 +124,8 @@ for line in open( samples ):
     config.set( 'USER', 'user_remote_dir', outname+name )
     config.add_section( 'GRID' )
     config.set( 'GRID', 'rb', 'CERN' )
-    config.set( 'GRID', 'group', 'dcms' )
+    if allow_dcms:
+        config.set( 'GRID', 'group', 'dcms' )
     config.set( 'GRID', 'se_black_list', options.blacklist )
     config.set( 'GRID', 'additional_jdl_parameters', 'rank=-other.GlueCEStateEstimatedResponseTime+(other.GlueCEStateFreeJobSlots > 10 ? 86400 : 0)-(other.GlueCEStateWaitingJobs > 10 ? 0 : 86400);' )
 
