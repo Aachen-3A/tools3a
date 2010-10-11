@@ -126,6 +126,8 @@ for line in open( samples ):
     config.set( 'GRID', 'rb', 'CERN' )
     if allow_dcms:
         config.set( 'GRID', 'group', 'dcms' )
+    config.set( 'GRID', 'max_cpu_time', '1400' )
+    config.set( 'GRID', 'max_wall_clock_time', '1400' )
     config.set( 'GRID', 'se_black_list', options.blacklist )
     config.set( 'GRID', 'additional_jdl_parameters', 'rank=-other.GlueCEStateEstimatedResponseTime+(other.GlueCEStateFreeJobSlots > 10 ? 86400 : 0)-(other.GlueCEStateWaitingJobs > 10 ? 0 : 86400);' )
 
