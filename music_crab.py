@@ -9,13 +9,17 @@ import optparse
 import datetime
 import ConfigParser
 
-lumi_mask_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
+lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
+config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
 
 
-parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs, using CMSSW config CFG_FILE, on all samples listed in DATASET_FILE',  usage='usage: %prog [options] CFG_FILE DATASET_FILE' )
+parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
+parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
+parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/configs]' )
 parser.add_option( '-n', '--name', metavar='NAME', help='Output will be written in store/user/{your_name}/NAME/{short_dataset_name} [default: MUSiC/{current_date}]' )
 parser.add_option( '-r', '--runs', metavar='RUNS', help='Only analyze the given runs (comma separated list)' )
 parser.add_option( '-l', '--lumimask', metavar='FILE', help='Use JSON file FILE as lumi mask' )
+parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
 parser.add_option( '-t', '--total', metavar='NUMBER', default='-1', help='Only analyze NUMBER events/lumis [default: %default; means all]' )
 parser.add_option( '-j', '--perJob', metavar='NUMBER', default='unset', help='Anlyze NUMBER events.lumis per job [default: 50000 events or 35 lumis]' )
 parser.add_option( '-s', '--server', action='store_true', default=False, help='Use the CRAB server [default: %default]' )
@@ -24,8 +28,8 @@ parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES i
 
 (options, args ) = parser.parse_args()
 
-if len( args ) < 2:
-    parser.error( 'CFG_FILE and DATASET_FILE required' )
+if len( args ) < 1:
+    parser.error( 'DATASET_FILE required' )
 
 del parser
 
@@ -56,9 +60,21 @@ else:
     options.blacklist = 'T0,T1'
     
 
-pset = args[0]
-samples = args[1]
-
+sample_file = open( args[0] )
+if options.config:
+    pset = options.config
+else:
+    for line in sample_file:
+        line = line[:-1]
+        if not line or line.startswith( '#' ): continue
+        if line.startswith( 'config' ):
+            (junk,pset) = line.split( '=' )
+            pset = os.path.join( options.config_dir, pset )
+            break
+    else:
+        print 'No CMSSW config file specified!'
+        print 'Either add it to the sample file or add it to the command line.'
+        sys.exit(1)
 
 print 'Reading config', pset
 file = open( pset )
@@ -74,7 +90,7 @@ dcms_blacklist = [ 'malhotra' ]
 allow_dcms = not user in dcms_blacklist
 
 
-for line in open( samples ):
+for line in sample_file:
     line = line[:-1]
     if not line or line.startswith( '#' ): continue
 
@@ -82,7 +98,7 @@ for line in open( samples ):
     if ';' in line:
         split_line = line.split( ';' )
         first_part = split_line[ 0 ]
-        lumi_mask = os.path.join( lumi_mask_dir, split_line[ 1 ] )
+        lumi_mask = os.path.join( options.lumi_dir, split_line[ 1 ] )
         if len( split_line ) > 2:
             lumiPerJob = int( split_line[ 2 ] )
         else:
