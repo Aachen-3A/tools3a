@@ -136,8 +136,14 @@ for line in sample_file:
     config.add_section( 'USER' )
     config.set( 'USER', 'return_data', '0' )
     config.set( 'USER', 'copy_data', '1' )
-    config.set( 'USER', 'storage_element', 'T2_DE_RWTH' )
-    config.set( 'USER', 'user_remote_dir', outname+name )
+    if allow_dcms:
+        config.set( 'USER', 'storage_element', 'T2_DE_RWTH' )
+        config.set( 'USER', 'user_remote_dir', outname+name )
+    else:
+        config.set( 'USER', 'storage_element', 'grid-srm.physik.rwth-aachen.de' )
+        config.set( 'USER', 'storage_port', '8443' )
+        config.set( 'USER', 'storage_path', '/srm/managerv2?SFN=/pnfs/physik.rwth-aachen.de/cms' )
+        config.set( 'USER', 'user_remote_dir', '/store/user/pieta/'+user+'/'+outname+name )
     config.add_section( 'GRID' )
     config.set( 'GRID', 'rb', 'CERN' )
     if allow_dcms:
