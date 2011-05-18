@@ -28,10 +28,13 @@ del parser
 #generate the lumi-mask map
 lumi_map = []
 if not options.all_lumi:
-   for line in open( lumi_map_file ):
-      (pattern,file) = line[:-1].split( ':' )
-      lumis = LumiList( os.path.join( options.lumi_dir, file ) )
-      lumi_map.append( (pattern, file, lumis) )
+   for line in open( options.lumi_map ):
+      if not line.startswith( '#' ):
+         line = line.split( '#' )[0].strip()
+         if line:
+            (pattern,file) = line.split( ':' )
+            lumis = LumiList( os.path.join( options.lumi_dir, file ) )
+            lumi_map.append( (pattern, file, lumis) )
 
 jsons_to_read = []
 #now work on all tasks
@@ -71,7 +74,7 @@ print '\nCalculating integrated lumi:\n'
 for json in jsons_to_read:
    print os.path.splitext( json )[0], '\t',
    #get the lumi information
-   proc = subprocess.Popen( ['lumiCalc.py', '-c', 'frontier://LumiProd/CMS_LUMI_PROD', 'overview', '-i', json ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
+   proc = subprocess.Popen( ['lumiCalc.py', '-b', 'stable', 'overview', '-i', json ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
    output = proc.communicate()[0]
    if proc.returncode != 0:
       print '\nCalling lumiCalc.py failed. Output:'
