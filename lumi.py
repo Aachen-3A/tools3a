@@ -69,12 +69,12 @@ for task in tasks:
    print 'Task %s with dataset %s written to %s' % (task, datasetpath, output_file_name)
 
 
-print '\nCalculating integrated lumi:\n'
+print '\nCalculating integrated lumi in pb^-1:\n'
 #loop over generated lumi-files and get the lumi
 for json in jsons_to_read:
    print os.path.splitext( json )[0], '\t',
    #get the lumi information
-   proc = subprocess.Popen( ['lumiCalc.py', '-b', 'stable', 'overview', '-i', json ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
+   proc = subprocess.Popen( [ 'lumiCalc2.py', '--with-correction', '-b', 'stable', 'overview', '-i', json ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
    output = proc.communicate()[0]
    if proc.returncode != 0:
       print '\nCalling lumiCalc.py failed. Output:'
