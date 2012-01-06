@@ -25,6 +25,7 @@ parser.add_option( '-j', '--perJob', metavar='NUMBER', default='unset', help='An
 parser.add_option( '-s', '--server', action='store_true', default=False, help='Use the CRAB server [default: %default]' )
 parser.add_option( '-g', '--scheduler', default='glite', help='Scheduler to use (glidein implies --server) [default: %default]' )
 parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1' )
+parser.add_option( '-d', '--dbs-url', metavar='DBSURL', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
 
 (options, args ) = parser.parse_args()
 
@@ -133,6 +134,8 @@ for line in sample_file:
     if options.runs:
         config.set( 'CMSSW', 'runselection', options.runs )
     config.set( 'CMSSW', 'output_file', name+'.pxlio' )
+    if options.dbs_url:
+        config.set( 'CMSSW', 'dbs_url', options.dbs_url )
     config.add_section( 'USER' )
     config.set( 'USER', 'return_data', '0' )
     config.set( 'USER', 'copy_data', '1' )
