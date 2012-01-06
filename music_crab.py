@@ -12,6 +12,7 @@ import ConfigParser
 lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
 config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
 
+COMMENT_CHAR = '#'
 
 parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
 parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
@@ -67,10 +68,12 @@ if options.config:
 else:
     for line in sample_file:
         line = line[:-1]
-        if not line or line.startswith( '#' ): continue
+        if not line or line.startswith( COMMENT_CHAR ): continue
+        if COMMENT_CHAR in line:
+            line, comment = line.split( COMMENT_CHAR, 1 )
         if line.startswith( 'config' ):
             (junk,pset) = line.split( '=' )
-            pset = os.path.join( options.config_dir, pset )
+            pset = os.path.join( options.config_dir, pset.strip() )
             break
     else:
         print 'No CMSSW config file specified!'
@@ -93,7 +96,9 @@ allow_dcms = not user in dcms_blacklist
 
 for line in sample_file:
     line = line[:-1]
-    if not line or line.startswith( '#' ): continue
+    if not line or line.startswith( COMMENT_CHAR ): continue
+    if COMMENT_CHAR in line:
+        line, comment = line.split( COMMENT_CHAR, 1 )
 
     #lumi-mask and lumis-per-job can be specified in the command line
     if ';' in line:
