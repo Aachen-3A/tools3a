@@ -116,7 +116,8 @@ for line in sample_file:
 
     (name,sample) = first_part.split( ':' )
 
-    print name, ': Generating CRAB cfg...',
+    print '%s:' % name
+    print 'Generating CRAB cfg...'
     config = ConfigParser.RawConfigParser()
     config.add_section( 'CRAB' )
     config.set( 'CRAB', 'jobtype', 'cmssw' )
@@ -167,9 +168,33 @@ for line in sample_file:
     del cfg_file
 
  
-    print 'Generating CMSSW config...',
+    print 'Generating CMSSW config...'
     process.Skimmer.FileName = name+'.pxlio'
     process.Skimmer.Process = name
+
+    # This is a little hack for the Fall11 production.
+    # We need different global tags for different samples to get the right jet
+    # energy corrections. So set them here.
+    #
+    # FIXME: This should be removed (or updated) for SU12 and newer samples.
+    #
+    print "sample:",sample
+    if 'Fall11' in sample:
+        if 'START42' in sample:
+            process.GlobalTag.globaltag = 'START42_V17::All'
+        elif 'START44_V9B' in sample:
+            process.GlobalTag.globaltag = 'START44_V9C::All'
+        elif 'START44_V5' in sample:
+            process.GlobalTag.globaltag = 'START44_V5D::All'
+        elif 'START44_V10' in sample:
+            process.GlobalTag.globaltag = 'START44_V10D::All'
+        elif 'START44' in sample:
+            print "Unknown sample type: '%s'. Using Global Tag from config file." % sample
+        else:
+            print "Sample '%s' apparently not processed with CMSSW 4XY. Aborting!" % sample
+            sys.exit( 2 )
+
+        print "INFO (%s): Using global tag: '%s'" % ( sys.argv[0].split( '/' )[-1], process.GlobalTag.globaltag )
 
     pset_file = open( name+'_cfg.py', 'w' )
     pset_file.write( "import FWCore.ParameterSet.Config as cms\n" )
