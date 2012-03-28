@@ -67,7 +67,7 @@ if options.config:
     pset = options.config
 else:
     for line in sample_file:
-        line = line[:-1]
+        line = line.strip()
         if not line or line.startswith( COMMENT_CHAR ): continue
         if COMMENT_CHAR in line:
             line, comment = line.split( COMMENT_CHAR, 1 )
@@ -95,7 +95,7 @@ allow_dcms = not user in dcms_blacklist
 
 
 for line in sample_file:
-    line = line[:-1]
+    line = line.strip()
     if not line or line.startswith( COMMENT_CHAR ): continue
     if COMMENT_CHAR in line:
         line, comment = line.split( COMMENT_CHAR, 1 )
