@@ -2,7 +2,7 @@
 
 import optparse
 
-datastreams = [ 'SingleMu', 'SingleElectron', 'Jet', 'MET', 'Photon', 'DoubleMu', 'Tau', 'TauPlusX' ]
+datastreams = [ 'SingleMu', 'SingleElectron', 'Photon', 'Jet', 'MET', 'METBTag', 'DoubleMu', 'Tau', 'TauPlusX' ]
 
 usage = """./%prog DATASET DCSFILES
 The DSCFILES must be in the form of DCS-<runmin>-<runmax>.json"""
