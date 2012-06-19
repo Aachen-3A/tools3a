@@ -43,6 +43,7 @@ parser.add_option( '-s', '--server', action='store_true', default=False, help='U
 parser.add_option( '-g', '--scheduler', default='glite', help='Scheduler to use (glidein implies --server) [default: %default]' )
 parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1' )
 parser.add_option( '-d', '--dbs-url', metavar='DBSURL', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
+parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB' )
 
 (options, args ) = parser.parse_args()
 
@@ -231,4 +232,8 @@ for line in sample_file:
     pset_file.close()
 
     print 'done and submitting...'
-    subprocess.call( [ 'crab', '-create', '-submit', '-cfg', name+'.cfg' ] )
+    command = [ 'crab', '-create', '-submit', '-cfg', name + '.cfg' ]
+    if not options.dry_run:
+        subprocess.call( command )
+    else:
+        print 'Dry-run: crab command would have been: ', ' '.join( command )
