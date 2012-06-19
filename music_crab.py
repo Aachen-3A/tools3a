@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import datetime
 import os
 import sys
 import subprocess
@@ -8,6 +9,21 @@ import pickle
 import optparse
 import datetime
 import ConfigParser
+import subprocess
+
+def getNumberOfEvents( dataset ):
+    query = 'find sum(block.numevents) where dataset = ' + dataset
+    dbs_cmd = [ 'dbs', 'search', '--query', query ]
+    dbs_output = subprocess.Popen( dbs_cmd, stdout = subprocess.PIPE ).communicate()[0]
+
+    for i, line in enumerate( dbs_output.splitlines() ):
+        if 'sum_block.numevents' in line:
+            numEvents = dbs_output.splitlines()[ i + 2 ]
+            if numEvents.isdigit():
+                return int( numEvents )
+            else:
+                return 0
+
 
 lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
 config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
@@ -22,7 +38,7 @@ parser.add_option( '-r', '--runs', metavar='RUNS', help='Only analyze the given 
 parser.add_option( '-l', '--lumimask', metavar='FILE', help='Use JSON file FILE as lumi mask' )
 parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
 parser.add_option( '-t', '--total', metavar='NUMBER', default='-1', help='Only analyze NUMBER events/lumis [default: %default; means all]' )
-parser.add_option( '-j', '--perJob', metavar='NUMBER', default='unset', help='Anlyze NUMBER events.lumis per job [default: 50000 events or 35 lumis]' )
+parser.add_option( '-j', '--perJob', metavar='NUMBER', default='unset', help='Analyze NUMBER events.lumis per job [default: 50000 events or 35 lumis]; Use "-j auto" for an automatic number' )
 parser.add_option( '-s', '--server', action='store_true', default=False, help='Use the CRAB server [default: %default]' )
 parser.add_option( '-g', '--scheduler', default='glite', help='Scheduler to use (glidein implies --server) [default: %default]' )
 parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1' )
@@ -49,11 +65,12 @@ else:
     outname = 'MUSiC/'+datetime.date.today().isoformat()
 outname += '/'
 
-if options.perJob == 'unset':
-    defaultLumiPerJob = '100'
-    eventsPerJob = '50000'
-else:
-    defaultLumiPerJob = options.perJob
+lumisPerJob = 100
+eventsPerJob = 50000
+maxNumJobs = 500
+
+if options.perJob != 'unset' and options.perJob != 'auto':
+    lumisPerJob = options.perJob
     eventsPerJob = options.perJob
 
 if options.blacklist:
@@ -106,15 +123,22 @@ for line in sample_file:
         first_part = split_line[ 0 ]
         lumi_mask = os.path.join( options.lumi_dir, split_line[ 1 ] )
         if len( split_line ) > 2:
-            lumiPerJob = int( split_line[ 2 ] )
+            lumisPerJob = int( split_line[ 2 ] )
         else:
-            lumiPerJob = defaultLumiPerJob
+            lumisPerJob = lumisPerJob
     else:
-        lumiPerJob = defaultLumiPerJob
         first_part = line
         lumi_mask = None
 
     (name,sample) = first_part.split( ':' )
+
+    setJobsNumber = False
+
+    if options.perJob == 'auto':
+        numEvents = getNumberOfEvents( sample )
+
+        if numEvents / maxNumJobs > eventsPerJob:
+            setJobsNumber = True
 
     print '%s:' % name
     print 'Generating CRAB cfg...'
@@ -129,14 +153,17 @@ for line in sample_file:
     config.set( 'CMSSW', 'pset', name+'_cfg.py' )
     if options.lumimask or lumi_mask:
         config.set( 'CMSSW', 'total_number_of_lumis', options.total )
-        config.set( 'CMSSW', 'lumis_per_job', lumiPerJob )
+        config.set( 'CMSSW', 'lumis_per_job', lumisPerJob )
         if options.lumimask:
             config.set( 'CMSSW', 'lumi_mask', options.lumimask )
         else:
             config.set( 'CMSSW', 'lumi_mask', lumi_mask )
     else:
         config.set( 'CMSSW', 'total_number_of_events', options.total )
-        config.set( 'CMSSW', 'events_per_job', eventsPerJob )
+        if setJobsNumber:
+            config.set( 'CMSSW', 'number_of_jobs', maxNumJobs - 50 )
+        else:
+            config.set( 'CMSSW', 'events_per_job', eventsPerJob )
     if options.runs:
         config.set( 'CMSSW', 'runselection', options.runs )
     config.set( 'CMSSW', 'output_file', name+'.pxlio' )
