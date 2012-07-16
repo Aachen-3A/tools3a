@@ -20,9 +20,13 @@ parser = optparse.OptionParser( description='Calculate the integrated luminosity
 parser.add_option( '-d', '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
 parser.add_option( '-l', '--lumi-map', metavar='FILE', default=lumi_map_file, help='Pattern file to map tasks on lumi-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi/lumi-map.txt]' )
 parser.add_option( '-a', '--all-lumi', action='store_true', default=False, help='Do not apply further lumi-masks [default: %default]' )
-parser.add_option( '-L', '--lumiCalc', action='store_true', default=False, help='Use lumiCalc.py instead of lumiCalc2.py [default: %default]' )
+parser.add_option( '-L', '--lumiCalc', action = 'store_true', default = False,
+                   help = 'Use lumiCalc.py instead of pixelLumiCalc.py. [default: %default]' )
+parser.add_option(       '--lumiCalc2', action = 'store_true', default = False,
+                   help = 'Use lumiCalc2.py instead of pixelLumiCalc.py .[default: %default]' )
 parser.add_option( '-o', '--output', metavar='OUTFILE', help='Store output in OUTFILE [default: lumi-<date>.txt]' )
-parser.add_option( '-w', '--with-out', action='store_true', default=False, help='Do not use correction in lumi calculation [default: %default]' )
+parser.add_option( '-w', '--without', action = 'store_true', default = False,
+                   help = 'Do not use correction in lumi calculation (lumiCalc2.py and pixelLumiCalc.py only). [default: %default]' )
 
 (options, tasks ) = parser.parse_args()
 
@@ -32,12 +36,17 @@ units = dict( [ ['/\xce\xbcb', 1e-6 ], [ '/ub', 1e-6 ], [ '/nb', 1e-3 ], [ '/pb'
 if not tasks:
    parser.error( 'Needs at least one task to work on.' )
 
+if options.lumiCalc and options.lumiCalc2:
+   parser.error( 'Not allowed to use both --lumiCalc and --lumiCalc2 at the same time!' )
+
 del parser
 
 if options.lumiCalc:
    options.lumi = 'lumiCalc.py'
-else:
+elif options.lumiCalc2:
    options.lumi = 'lumiCalc2.py'
+else:
+   options.lumi = 'pixelLumiCalc.py'
 
 if not options.output:
    options.output = 'lumi-' + date + '.txt'
@@ -96,9 +105,11 @@ for json in jsons_to_read:
    print os.path.splitext( json )[0], '\t',
 
    #get the lumi information
-   args = [ options.lumi, '-b', 'stable', 'overview', '-i', json ]
-   if not options.with_out:
-     args += [ '--with-correction' ]
+   args = [ options.lumi, 'overview', '-i', json ]
+   if options.lumiCalc or options.lumiCalc2:
+      args = [ options.lumi, '-b', 'stable', 'overview', '-i', json ]
+   if options.without and not options.lumiCalc:
+      args += [ '--without-correction' ]
    proc = subprocess.Popen( args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
 
    output = proc.communicate()[0]
