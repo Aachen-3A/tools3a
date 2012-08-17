@@ -209,7 +209,7 @@ for line in sample_file:
     print "sample:",sample
     if 'Fall11' in sample:
         if 'START42' in sample:
-            process.GlobalTag.globaltag = 'START42_V17::All'
+            process.GlobalTag.globaltag = 'START44_V12::All'
         elif 'START44_V9B' in sample:
             process.GlobalTag.globaltag = 'START44_V9C::All'
         elif 'START44_V5' in sample:
