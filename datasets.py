@@ -2,28 +2,45 @@
 
 import optparse
 
-datastreams = [ 'SingleMu', 'SingleElectron', 'Photon', 'Jet', 'MET', 'METBTag', 'DoubleMu', 'Tau', 'TauPlusX' ]
+datastreams = [
+               'SingleMu',
+               'SingleElectron',
+               'Tau',
+               'TauPlusX',
+               'Photon',
+               'Jet',
+               'MET',
+               'METBTag',
+               'DoubleMu',
+               'DoubleElectron',
+               'MuEG',
+               ]
 
-usage = """./%prog DATASET DCSFILES
-The DSCFILES must be in the form of DCS-<runmin>-<runmax>.json"""
+usage = "%prog RECO DCSFILES"
 
-description = """This script helps to create a .txt file with information needed
-for data skimming. It assignes the given DSCFILES to the datastreams depending
-on the run range of the DSCFILE."""
+description  = "This script helps to create a .txt file with information needed "
+description += "for data skimming. It assignes the given DSCFILES to the "
+description += "datastreams depending on the run range in the DSCFILE names. "
+description += "RECO is the full (Re)Reco label and version plus data tier, e.g. 'Run2011A-08Nov2011-v1/RECO' or 'Run2012A-PromptReco-v1/AOD'. "
+description += "DSCFILES is a list of files in the form of DCS-<runmin>-<runmax>.json. "
 
 parser = optparse.OptionParser( usage = usage, description = description )
 parser.add_option( '-o', '--output', metavar = 'FILENAME', default = 'data.txt',
                    help = 'Set the filename where the results shall be stored.  [default = %default]' )
-parser.add_option( '-c', '--config', metavar = 'CONFIGNAME',
-                   help = 'Set the name of the config file that shall be used for this dataset(s). No default.' )
+parser.add_option( '-c', '--config', metavar = 'CONFIGNAME', default = 'data_cfg.py',
+                   help = 'Set the name of the config file that shall be used for this dataset(s). [default = %default]' )
+parser.add_option( '-d', '--datastreams', metavar = 'DATASTREAMS', default = ','.join( datastreams ),
+                   help = 'Set the datastream(s) (aka. Primary Datasets) you want to skim. [default = %default]' )
 
 ( options, args ) = parser.parse_args()
 
 if len( args ) < 2:
-    parser.error( 'Exactly one DATASET and at least one DCSFILE needed!' )
+    parser.error( 'Exactly one RECO and at least one DCSFILE needed!' )
 
-dataset = args[0]
+reco = args[0].strip( ' /' )
 del args[0]
+
+options.datastreams = options.datastreams.split( ',' )
 
 file = open( options.output , 'w' )
 
@@ -39,7 +56,7 @@ for filename in args:
         parser.error( "Expected files in the form of DCS-<runmin>-<runmax>.json but found: '%s'!" % filename )
 
     for datastream in datastreams:
-        string = 'Data' + '_' + run_min + '_' + run_max + '_' + datastream + ':/' + datastream + '/' + dataset + ';' + filename
+        string = 'Data' + '_' + run_min + '_' + run_max + '_' + datastream + ':/' + datastream + '/' + reco + ';' + filename
         print >> file, string
 
     # Do not put an empty line at the end of the file.
