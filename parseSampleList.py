@@ -30,12 +30,9 @@ def main():
 
     # Set loggig format and level
     #
-    format = '%(levelname)s at %(asctime)s: %(message)s'
-    logging.basicConfig( filename = 'log_parseSampleList.txt', filemode = 'w', level = logging._levelNames[ options.debug ], format = format, datefmt = '%F %H:%M:%S' )
-
-    console = logging.StreamHandler()
-    console.setLevel( logging._levelNames[ options.debug ] )
-    log.addHandler( console )
+    format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
+    date = '%F %H:%M:%S'
+    logging.basicConfig( level = logging._levelNames[ options.debug ], format = format, datefmt = date )
 
     if options.prefix:
         options.prefix += '_'
