@@ -53,6 +53,8 @@ def main():
                     print_duplicates = item + '  --->  ' + procs_and_files[i][1] + ' in line no.: ' + str( procs_and_files[i][2] )
                     log.warning( print_duplicates )
         log.warning( 'You *must* adjust their names by hand!!' )
+    else:
+        log.info( "You're safe: No duplicates were found." )
 
     if not options.nomark:
         for file in args:
