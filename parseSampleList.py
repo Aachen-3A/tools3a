@@ -6,6 +6,8 @@ import os
 import re
 import sys
 
+from collections import defaultdict
+
 log = logging.getLogger( 'parseSampleList' )
 
 def main():
@@ -20,8 +22,8 @@ def main():
                        help = 'Specify a PREFIX for your output filename (e.g.  production version). [default = %default]' )
     parser.add_option( '-P', '--postfix', action = 'store', default = None, metavar = 'POSTFIX',
                        help = 'Specify a POSTFIX for every process name in the output file. [default = %default]' )
-    parser.add_option( '-t', '--timestamp', action = 'store', default = None, metavar = 'TIMESTAMP',
-                       help = 'Only parse parts of list that were written after a specific date, e.g., use when additional new samples are avaliable. [default = %default]' )
+    parser.add_option( '-t', '--no-timestamp', action = 'store_true', default = False,
+                       help = 'Do not split the output files by timestamps. [default = %default]' )
     parser.add_option( '-f', '--force', action = 'store_true', default = False,
                        help = 'Force overwriting of output files.' )
     parser.add_option(       '--debug', metavar = 'LEVEL', default = 'INFO',
@@ -44,99 +46,124 @@ def main():
     if len( args ) != 1:
         parser.error( 'Exactly 1 argument needed: state the file you want to parse.' )
 
+    samples_by_timestamps = getSamplesByTimestamps( options, args[0] )
+
     generators = []
-    generators.append( [ 'madgraph', 'MG', [] ] )
-    generators.append( [ 'powheg',   'PH', [] ] )
-    generators.append( [ 'herwig6',  'HW', [] ] )
-    generators.append( [ 'herwigpp', 'HP', [] ] )
-    generators.append( [ 'herwig',   'HW', [] ] )
-    generators.append( [ 'sherpa',   'SP', [] ] )
-    generators.append( [ 'mcatnlo',  'MC', [] ] )
-    generators.append( [ 'alpgen',   'AG', [] ] )
-    generators.append( [ 'pythia6',  'P6', [] ] )
-    generators.append( [ 'pythia8',  'P8', [] ] )
-    generators.append( [ 'pythia',   'PY', [] ] )
-    generators.append( [ 'comphep',  'CH', [] ] )
-    generators.append( [ 'gg2ww',    'GG', [] ] )
-    generators.append( [ 'gg2zz',    'GG', [] ] )
-    generators.append( [ 'gg2vv',    'GG', [] ] )
+    generators.append( ( 'madgraph', 'MG', defaultdict( list ) ) )
+    generators.append( ( 'powheg',   'PH', defaultdict( list ) ) )
+    generators.append( ( 'herwig6',  'HW', defaultdict( list ) ) )
+    generators.append( ( 'herwigpp', 'HP', defaultdict( list ) ) )
+    generators.append( ( 'herwig',   'HW', defaultdict( list ) ) )
+    generators.append( ( 'sherpa',   'SP', defaultdict( list ) ) )
+    generators.append( ( 'mcatnlo',  'MC', defaultdict( list ) ) )
+    generators.append( ( 'alpgen',   'AG', defaultdict( list ) ) )
+    generators.append( ( 'calchep',  'CA', defaultdict( list ) ) )
+    generators.append( ( 'comphep',  'CO', defaultdict( list ) ) )
+    generators.append( ( 'lpair',    'LP', defaultdict( list ) ) )
+    generators.append( ( 'pythia6',  'P6', defaultdict( list ) ) )
+    generators.append( ( 'pythia8',  'P8', defaultdict( list ) ) )
+    generators.append( ( 'pythia',   'PY', defaultdict( list ) ) )
+    generators.append( ( 'gg2ww',    'GG', defaultdict( list ) ) )
+    generators.append( ( 'gg2zz',    'GG', defaultdict( list ) ) )
+    generators.append( ( 'gg2vv',    'GG', defaultdict( list ) ) )
 
     print_list = {}
 
-    sample_file = open( args[0], 'r' )
+    unkown_gen  = list()
 
-    valid_ts = ''
-    starting_line = 0
-    if options.timestamp:
-        for num, line in enumerate( sample_file ):
-            if options.timestamp in line:
-                log.info( 'Found timestamp: ' + options.timestamp + '\n' )
-                valid_ts = options.timestamp
-                starting_line = num
-                break
-        else:
-            log.info( "Timestamp: '%s' does not appear in the file  -> exiting..." % str( options.timestamp ) )
-            sys.exit( 0 )
+    for timestamp, datasets in samples_by_timestamps.items():
 
-    sample_file.seek( 0 )
+        for dataset in datasets:
+            samplename = abbrDatasetName( dataset )
 
-    all_samples = list()
-    samples     = list()
+            for gen in generators:
+                key     = gen[0]
+                value   = gen[1]
 
-    for num, line in enumerate( sample_file ):
-        if line.startswith( '/' ):
-            if num > starting_line:
-                dataset    = line.strip()
-                samplename = abbrDatasetName( dataset )
-                for gen in generators:
-                    key     = gen[0]
-                    value   = gen[1]
-                    samples = gen[2]
+                # subn() performs sub(), but returns tuple (new_string, number_of_subs_made)
+                ( samplename, n ) = re.subn( r'(?i).' + key, '', samplename )
 
-                    ( samplename, n ) = re.subn( r'(?i).' + key, '', samplename )       # subn() performs sub(), but returns tuple (new_string, number_of_subs_made)
+                if n > 0:
+                    if options.postfix: samplename += '_' + options.postfix
+                    samplename += '_' + value
 
-                    if n > 0:
-                        if options.postfix: samplename += '_' + options.postfix
-                        samplename += '_' + value
+                    # If the showering is done with pythia or herwig and
+                    # this is also given in the original sample name delete
+                    # it from the sample name.
+                    shower = [ 'pythia8',
+                               'pythia6',
+                               'pythia',
+                               'herwigpp',
+                               ]
+                    for g in shower:
+                        samplename = re.sub( r'(?i).' + g, '', samplename )
 
-                        # If the showering is done with pythia or herwig and
-                        # this is also given in the original sample name delete
-                        # it from the sample name.
-                        shower = [ 'pythia8',
-                                   'pythia6',
-                                   'pythia',
-                                   'herwigpp',
-                                   ]
-                        for g in shower:
-                            samplename = re.sub( r'(?i).' + g, '', samplename )
-
-                        samples.append( samplename + ':' + dataset )
-                        break
-                else:
-                    log.warning( 'Dataset produced with unkown generator: %s' %samplename )
-                samplename += ':'
-                print_list[ dataset ] = samplename
+                    gen[2][ timestamp ].append( samplename + ':' + dataset )
+                    break
+            else:
+                unkown_gen.append( samplename )
+            samplename += ':'
+            print_list[ dataset ] = samplename
 
 
     for gen in generators:
-        if gen[2]:
-            gen_file_name = 'mc_' + options.prefix + gen[0] + '.txt'
-            if os.path.exists( gen_file_name ) and not options.force:
-                raise Exception( "Found file '%s'! If you want to overwrite it use --force." % gen_file_name )
-            else:
-                file = open( gen_file_name, 'w' )
-            print >> file, 'config = ' + options.config
-            print >> file
+        number = 1
+        if gen[2].items():
+            for timestamp, datasets in sorted( gen[2].items() ):
 
-            for sample in sorted( gen[2] ):
-                print >> file, sample
-            file.close()
+                if not options.no_timestamp:
+                    gen_file_name = 'mc_' + options.prefix + gen[0] + '_%02d'%number + '.txt'
+                else:
+                    gen_file_name = 'mc_' + options.prefix + gen[0] + '.txt'
+
+                if os.path.exists( gen_file_name ) and not options.force:
+                    raise Exception( "Found file '%s'! If you want to overwrite it use --force." % gen_file_name )
+                else:
+                    file = open( gen_file_name, 'w' )
+                    print >> file, 'config = ' + options.config
+                    print >> file
+
+                for dataset in sorted( datasets ):
+                    print >> file, dataset
+
+                file.close()
+                number += 1
 
     length = max( map( len, print_list.values() ) )
+    processes_samples = list()
     for name, sample in sorted( print_list.items() ):
-        log.info( sample.ljust( length ) + name )
+        processes_samples.append( sample.ljust( length ) + name )
 
-    log.info( '\n----> Total number of datasets: %s\n' % len( print_list ) )
+    log.info( 'Process names and sample names:\n' + '\n'.join( processes_samples ) )
+
+    log.info( '----> Total number of datasets: %s  ' % len( print_list ) )
+
+    if unkown_gen:
+        log.warning( 'Dataset produced with unkown generator:\n' + '\n'.join( unkown_gen ) )
+
+
+def getSamplesByTimestamps( options, filename ):
+    file = open( filename, 'r' )
+
+    file.seek( 0 )
+
+    # Store samples by timestamps.
+    samples_by_timestamps = defaultdict( list )
+
+    for line in file.readlines():
+        if options.no_timestamp:
+            timestamp = 'noTimestamp'
+        else:
+            if line.startswith( '#' ):
+                # Identify timestamp with regexs.
+                if re.search( '# \d\d\d\d-\d\d-\d\d \d\d:\d\d', line ):
+                    timestamp = line.strip()
+        if line.startswith( "/" ):
+            samples_by_timestamps[ timestamp ].append( line.strip() )
+
+    file.close()
+
+    return samples_by_timestamps
 
 
 def abbrDatasetName( datasetName ):
