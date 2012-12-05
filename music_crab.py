@@ -4,12 +4,12 @@ import datetime
 import os
 import sys
 import subprocess
+import time
 import imp
 import pickle
 import optparse
 import datetime
 import ConfigParser
-import subprocess
 
 def getNumberOfEvents( dataset ):
     query = 'find sum(block.numevents) where dataset = ' + dataset
@@ -25,6 +25,43 @@ def getNumberOfEvents( dataset ):
                 return 0
 
 
+def parseCrabOutput( output ):
+    totalNumJobs = 0
+    workDir = ''
+
+    for line in output.splitlines():
+        if 'working directory' in line:
+            workDir = line.split()[2]
+
+        if 'Total number of created jobs:' in line:
+            totalNumJobs = int( line.split()[-1] )
+
+        if line.startswith( 'crab:' ):
+            if 'Total of' in line and 'jobs created' in line:
+                totalNumJobs = int( line.split()[3] )
+
+    return workDir, int( totalNumJobs )
+
+
+def crabSubmit( options, workDir, first=None, last=None ):
+    cmd = [ 'crab' ]
+
+    if first != None and last != None:
+        range = '%i-%i' % ( first, last )
+        cmd += [ '-submit', range ]
+    else:
+        cmd += [ '-submit' ]
+
+    if workDir:
+        cmd += [ '-c', workDir ]
+
+    if options.dry_run:
+        print 'Dry-run: crab command would have been:', ' '.join( cmd )
+    else:
+        print 'Done and submitting...'
+        subprocess.call( cmd )
+
+
 lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
 config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
 
@@ -38,9 +75,12 @@ parser.add_option( '-r', '--runs', metavar='RUNS', help='Only analyze the given 
 parser.add_option( '-l', '--lumimask', metavar='FILE', help='Use JSON file FILE as lumi mask' )
 parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
 parser.add_option( '-t', '--total', metavar='NUMBER', default='-1', help='Only analyze NUMBER events/lumis [default: %default; means all]' )
-parser.add_option( '-j', '--perJob', metavar='NUMBER', default='unset', help='Analyze NUMBER events.lumis per job [default: 50000 events or 35 lumis]; Use "-j auto" for an automatic number' )
+parser.add_option( '-j', '--perJob', metavar='NUMBER', default='unset',
+                   help="Analyze NUMBER events per job (MC) or lumis per job (data) [default: 50000 events or 35 lumis]. Use '--perJob=auto' for an automatic number that implies submitting < 500 jobs when running without the server." )
 parser.add_option( '-s', '--server', action='store_true', default=False, help='Use the CRAB server [default: %default]' )
-parser.add_option( '-g', '--scheduler', default='glite', help='Scheduler to use (glidein implies --server) [default: %default]' )
+parser.add_option( '-g', '--scheduler', metavar='SCHEDULER', default='glite',
+                   help="Use scheduler SCHEDULER. ('--scheduler=glidein' implies '--server', '--scheduler=remoteGlidein' implies server cannot be used). \
+In case '--scheduler=remoteGlidein', the number of events/lumi per job is adjusted, so that the total number of jobs in each task does not exceed 5000. [default: %default]" )
 parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1' )
 parser.add_option( '-d', '--dbs-url', metavar='DBSURL', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
 parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB' )
@@ -50,11 +90,10 @@ parser.add_option( '--dry-run', action='store_true', default=False, help='Do eve
 if len( args ) < 1:
     parser.error( 'DATASET_FILE required' )
 
-del parser
-
-
 if options.scheduler == 'glidein':
     options.server = True
+if options.scheduler == 'remoteGlidein' and options.server:
+    parser.error( 'You cannot run remoteGlidein with the server. Aborting!' )
 
 if options.name:
     outname = options.name
@@ -69,6 +108,7 @@ outname += '/'
 lumisPerJob = 100
 eventsPerJob = 50000
 maxNumJobs = 500
+maxNumJobsRG = 5000
 
 if options.perJob != 'unset' and options.perJob != 'auto':
     lumisPerJob = options.perJob
@@ -135,10 +175,16 @@ for line in sample_file:
 
     setJobsNumber = False
 
-    if options.perJob == 'auto':
+    if options.perJob == 'auto' and not options.server:
         numEvents = getNumberOfEvents( sample )
 
         if numEvents / maxNumJobs > eventsPerJob:
+            setJobsNumber = True
+
+    elif options.scheduler == 'remoteGlidein':
+        numEvents = getNumberOfEvents( sample )
+
+        if numEvents / maxNumJobsRG > eventsPerJob:
             setJobsNumber = True
 
     print '%s:' % name
@@ -154,7 +200,10 @@ for line in sample_file:
     config.set( 'CMSSW', 'pset', name+'_cfg.py' )
     if options.lumimask or lumi_mask:
         if setJobsNumber:
-            config.set( 'CMSSW', 'number_of_jobs', maxNumJobs - 50 )
+            if options.scheduler == 'remoteGlidein':
+                config.set( 'CMSSW', 'number_of_jobs', maxNumJobsRG - 50 )
+            else:
+                config.set( 'CMSSW', 'number_of_jobs', maxNumJobs - 50 )
         else:
             config.set( 'CMSSW', 'total_number_of_lumis', options.total )
         config.set( 'CMSSW', 'lumis_per_job', lumisPerJob )
@@ -165,7 +214,10 @@ for line in sample_file:
     else:
         config.set( 'CMSSW', 'total_number_of_events', options.total )
         if setJobsNumber:
-            config.set( 'CMSSW', 'number_of_jobs', maxNumJobs - 50 )
+            if options.scheduler == 'remoteGlidein':
+                config.set( 'CMSSW', 'number_of_jobs', maxNumJobsRG - 50 )
+            else:
+                config.set( 'CMSSW', 'number_of_jobs', maxNumJobs - 50 )
         else:
             config.set( 'CMSSW', 'events_per_job', eventsPerJob )
     if options.runs:
@@ -234,12 +286,35 @@ for line in sample_file:
     pset_file.write("process = pickle.loads(pickledCfg)\n")
     pset_file.close()
 
-    command_submit = [ 'crab', '-create', '-submit', '-cfg', name + '.cfg' ]
-    if not options.dry_run:
-        print 'done and submitting...'
-        subprocess.call( command_submit )
+    command_create = [ 'crab', '-create', '-cfg', name + '.cfg' ]
+    if options.scheduler != 'remoteGlidein':
+        command_submit = [ 'crab', '-create', '-submit', '-cfg', name + '.cfg' ]
+        if not options.dry_run:
+            print 'done and submitting...'
+            subprocess.call( command_submit )
+        else:
+            print 'done and creating crab jobs...'
+            subprocess.call( command_create )
+            print 'Dry-run: Created task. crab command would have been: ', ' '.join( command_submit )
     else:
-        print 'done...'
-        command_create = [ 'crab', '-create', '-cfg', name + '.cfg' ]
-        subprocess.call( command_create )
-        print 'Dry-run: Created task. crab command would have been: ' + ' '.join( command_submit )
+        print 'creating crab task...'
+
+        proc = subprocess.Popen( command_create, stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
+        output = proc.communicate()[0]
+
+        # Check how many jobs have been created.
+        workDir, totalNumJobs = parseCrabOutput( output )
+
+        # With 'remoteGlidein' you can submit up to 5000 jobs per task.
+        # But you can submit only max. 500 jobs at once.
+        if totalNumJobs <= 500:
+            # Submit all:
+            crabSubmit( options, workDir )
+        else:
+            start = 1
+            while start + 499 < totalNumJobs:
+                crabSubmit( options, workDir, first=start, last=start + 499 )
+                start += 500
+
+            # Last one:
+            crabSubmit( options, workDir, first=start, last=totalNumJobs )
