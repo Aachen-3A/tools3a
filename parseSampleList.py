@@ -120,6 +120,7 @@ def main():
                     raise Exception( "Found file '%s'! If you want to overwrite it use --force." % gen_file_name )
                 else:
                     file = open( gen_file_name, 'w' )
+                    print >> file, 'generator = ' + gen[0].upper()
                     print >> file, 'config = ' + options.config
                     print >> file
 

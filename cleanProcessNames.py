@@ -39,7 +39,7 @@ def main():
     for file in args:
         mc_file = open( file, 'r' )
         for i, line in enumerate( mc_file.readlines(), 1 ):
-            if not line.startswith( 'config' ) and not line.startswith( '#' ) and line.strip():
+            if not line.startswith( 'config' ) and not line.startswith( '#' ) and not line.startswith( 'generator' ) and line.strip():
                 proc = line.strip().split( ':' )[0]
                 procs_and_files.append( [ proc, file, i ] )
                 procs_list.append( proc )
