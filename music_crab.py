@@ -153,7 +153,10 @@ for line in sample_file:
     config.set( 'CMSSW', 'datasetpath', sample )
     config.set( 'CMSSW', 'pset', name+'_cfg.py' )
     if options.lumimask or lumi_mask:
-        config.set( 'CMSSW', 'total_number_of_lumis', options.total )
+        if setJobsNumber:
+            config.set( 'CMSSW', 'number_of_jobs', maxNumJobs - 50 )
+        else:
+            config.set( 'CMSSW', 'total_number_of_lumis', options.total )
         config.set( 'CMSSW', 'lumis_per_job', lumisPerJob )
         if options.lumimask:
             config.set( 'CMSSW', 'lumi_mask', options.lumimask )
