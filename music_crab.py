@@ -84,6 +84,8 @@ In case '--scheduler=remoteGlidein', the number of events/lumi per job is adjust
 parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1' )
 parser.add_option( '-d', '--dbs-url', metavar='DBSURL', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
 parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB' )
+parser.add_option( '-m', '--no-more-time', action='store_false', default=False,
+                   help="By default, the limit on the wall clock time and cpu time will be increased to 72h with help of config files (this is a workaround for 'remoteGlidein' only). Use this option, if you don't want this behaviour [default: %default]!" )
 
 (options, args ) = parser.parse_args()
 
@@ -187,6 +189,28 @@ for line in sample_file:
         if numEvents / maxNumJobsRG > eventsPerJob:
             setJobsNumber = True
 
+    if options.scheduler == 'remoteGlidein' and not options.no_more_time:
+        # The filenames are NOT optional!
+        # Don't change them, unless you know exactly what you do.
+        wall_filename = 'wallLimit'
+        cpu_filename  = 'cpuLimit'
+
+        # Set max. time to 3*24*60*60 sec = 3 days
+        max_time = 259200.0
+        if os.path.isfile( wall_filename ):
+            print 'Using %s...' % wall_filename
+        else:
+            print 'Generating %s...' % wall_filename
+            wall_file = open( wall_filename, 'wb' )
+            wall_file.write( str( max_time ) )
+
+        if os.path.isfile( cpu_filename ):
+            print 'Using %s...' % cpu_filename
+        else:
+            print 'Generating %s...' % cpu_filename
+            cpu_file = open( cpu_filename, 'wb' )
+            cpu_file.write( str( max_time ) )
+
     print '%s:' % name
     print 'Generating CRAB cfg...'
     config = ConfigParser.RawConfigParser()
@@ -228,6 +252,8 @@ for line in sample_file:
     config.add_section( 'USER' )
     config.set( 'USER', 'return_data', '0' )
     config.set( 'USER', 'copy_data', '1' )
+    if options.scheduler == 'remoteGlidein' and not options.no_more_time:
+        config.set( 'USER', 'additional_input_files', '%s,%s' % ( wall_filename, cpu_filename ) )
     if allow_dcms:
         config.set( 'USER', 'storage_element', 'T2_DE_RWTH' )
         config.set( 'USER', 'user_remote_dir', outname+name )
