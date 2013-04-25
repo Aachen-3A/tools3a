@@ -491,26 +491,22 @@ for line in sample_file:
     process.Skimmer.FileName = name+'.pxlio'
     process.Skimmer.Process = name
 
-    # This is a little hack for the Fall11 production.
-    # We need different global tags for different samples to get the right jet
-    # energy corrections. So set them here.
-    #
-    # FIXME: This should be removed (or updated) for SU12 and newer samples.
+    # This is a little hack for the 2012 data taking.
+    # We need different global tags for different datasets to get the right
+    # information for the ecal laser correction filter. So set them here.
     #
     log.debug( "Full sample name:\n" + sample )
-    if 'Fall11' in sample:
-        if 'START42' in sample:
-            process.GlobalTag.globaltag = 'START44_V12::All'
-        elif 'START44_V9B' in sample:
-            process.GlobalTag.globaltag = 'START44_V9C::All'
-        elif 'START44_V5' in sample:
-            process.GlobalTag.globaltag = 'START44_V5D::All'
-        elif 'START44_V10' in sample:
-            process.GlobalTag.globaltag = 'START44_V10D::All'
-        elif 'START44' in sample:
-            log.warning( "Unknown sample type: '%s'. Using Global Tag from config file." % sample )
+    if 'Run' in sample:
+        if 'Run2012A-13Jul2012-v1' in sample or 'Run2012B-13Jul2012-v1' in sample:
+            process.GlobalTag.globaltag = 'FT_53_V6_AN2::All'
+        elif 'Run2012C-24Aug2012-v1' in sample:
+            process.GlobalTag.globaltag = 'FT_53_V10_AN2::All'
+        elif 'Run2012C-PromptReco-v2' in sample:
+            process.GlobalTag.globaltag = 'GR_P_V41_AN2::All'
+        elif 'Run2012D-PromptReco-v1' in sample:
+            process.GlobalTag.globaltag = 'GR_P_V42_AN2::All'
         else:
-            log.error( "Sample '%s' apparently not processed with CMSSW 4XY. Aborting!" % sample )
+            log.error( "The correct Global Tag for dataset '%s' has not been specified. Aborting!" % sample )
             sys.exit( 2 )
 
         log.info( "Using global tag %s" % ( process.GlobalTag.globaltag.pythonValue() ) )
