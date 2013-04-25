@@ -40,7 +40,10 @@ if len( args ) < 2:
 reco = args[0].strip( ' /' )
 del args[0]
 
-options.datastreams = options.datastreams.split( ',' )
+if options.datastreams:
+    options.datastreams = options.datastreams.split( ',' )
+else:
+    options.datastreams = datastreams
 
 file = open( options.output , 'w' )
 
@@ -55,7 +58,7 @@ for filename in args:
     if not filename.startswith( 'DCS-' ) or not filename.endswith( '.json' ) or not run_min.isdigit() or not run_max.isdigit():
         parser.error( "Expected files in the form of DCS-<runmin>-<runmax>.json but found: '%s'!" % filename )
 
-    for datastream in datastreams:
+    for datastream in options.datastreams:
         string = 'Data' + '_' + run_min + '_' + run_max + '_' + datastream + ':/' + datastream + '/' + reco + ';' + filename
         print >> file, string
 
