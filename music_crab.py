@@ -438,7 +438,6 @@ for line in sample_file:
     config.set( 'GRID', 'max_cpu_time', '4200' )
     config.set( 'GRID', 'max_wall_clock_time', '4200' )
     config.set( 'GRID', 'se_black_list', options.blacklist )
-    config.set( 'GRID', 'additional_jdl_parameters', 'rank=-other.GlueCEStateEstimatedResponseTime+(other.GlueCEStateFreeJobSlots > 10 ? 86400 : 0)-(other.GlueCEStateWaitingJobs > 10 ? 0 : 86400);' )
 
     cfg_file = open(name+'.cfg', 'wb')
     config.write( cfg_file )
