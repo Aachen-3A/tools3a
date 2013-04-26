@@ -234,9 +234,12 @@ for line in sample_file:
     pset_file.write("process = pickle.loads(pickledCfg)\n")
     pset_file.close()
 
-    print 'done and submitting...'
-    command = [ 'crab', '-create', '-submit', '-cfg', name + '.cfg' ]
+    command_submit = [ 'crab', '-create', '-submit', '-cfg', name + '.cfg' ]
     if not options.dry_run:
-        subprocess.call( command )
+        print 'done and submitting...'
+        subprocess.call( command_submit )
     else:
-        print 'Dry-run: crab command would have been: ', ' '.join( command )
+        print 'done...'
+        command_create = [ 'crab', '-create', '-cfg', name + '.cfg' ]
+        subprocess.call( command_create )
+        print 'Dry-run: Created task. crab command would have been: ' + ' '.join( command_submit )
