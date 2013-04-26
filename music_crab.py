@@ -86,7 +86,7 @@ parser.add_option( '-t', '--total', metavar='NUMBER', default='-1', help='Only a
 parser.add_option( '-j', '--perJob', metavar='NUMBER', default='unset',
                    help="Analyze NUMBER events per job (MC) or lumis per job (data) [default: 50000 events or 35 lumis]. Use '--perJob=auto' for an automatic number that implies submitting < 500 jobs when running without the server." )
 parser.add_option( '-s', '--server', action='store_true', default=False, help='Use the CRAB server [default: %default]' )
-parser.add_option( '-g', '--scheduler', metavar='SCHEDULER', default='glite',
+parser.add_option( '-g', '--scheduler', metavar='SCHEDULER', default='remoteGlidein',
                    help="Use scheduler SCHEDULER. ('--scheduler=glidein' implies '--server', '--scheduler=remoteGlidein' implies server cannot be used). \
 In case '--scheduler=remoteGlidein', the number of events/lumi per job is adjusted, so that the total number of jobs in each task does not exceed 5000. [default: %default]" )
 parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1' )
