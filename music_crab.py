@@ -8,8 +8,10 @@ import time
 import imp
 import pickle
 import optparse
-import datetime
+import logging
 import ConfigParser
+
+log = logging.getLogger( 'music_crab' )
 
 def getNumberOfEvents( dataset ):
     query = 'find sum(block.numevents) where dataset = ' + dataset
@@ -29,18 +31,23 @@ def parseCrabOutput( output ):
     totalNumJobs = 0
     workDir = ''
 
+    log.debug( 'Full output:\n' + output )
+
     for line in output.splitlines():
         if 'working directory' in line:
             workDir = line.split()[2]
+            log.debug( "Created working directory '%s'." % workDir )
 
         if 'Total number of created jobs:' in line:
             totalNumJobs = int( line.split()[-1] )
+            log.debug( "Created a total of %i jobs." % totalNumJobs )
 
         if line.startswith( 'crab:' ):
             if 'Total of' in line and 'jobs created' in line:
                 totalNumJobs = int( line.split()[3] )
+                log.debug( "Created a total of %i jobs." % totalNumJobs )
 
-    return workDir, int( totalNumJobs )
+    return workDir, totalNumJobs
 
 
 def crabSubmit( options, workDir, first=None, last=None ):
@@ -56,9 +63,9 @@ def crabSubmit( options, workDir, first=None, last=None ):
         cmd += [ '-c', workDir ]
 
     if options.dry_run:
-        print 'Dry-run: crab command would have been:', ' '.join( cmd )
+        log.info( 'Dry-run: crab command would have been: ' + ' '.join( cmd ) )
     else:
-        print 'Done and submitting...'
+        log.info( 'Done and submitting...' )
         subprocess.call( cmd )
 
 
@@ -67,6 +74,7 @@ config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimmin
 
 COMMENT_CHAR = '#'
 
+log_choices = [ 'ERROR', 'WARNING', 'INFO', 'DEBUG' ]
 parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
 parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
 parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/configs]' )
@@ -85,9 +93,26 @@ parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES i
 parser.add_option( '-d', '--dbs-url', metavar='DBSURL', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
 parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB' )
 parser.add_option( '-m', '--no-more-time', action='store_false', default=False,
-                   help="By default, the limit on the wall clock time and cpu time will be increased to 72h with help of config files (this is a workaround for 'remoteGlidein' only). Use this option, if you don't want this behaviour [default: %default]!" )
+                   help="By default, the limit on the wall clock time and cpu time will be increased to 72 h with help of config files (this is a workaround for 'remoteGlidein' only). Use this option, if you don't want this behaviour [default: %default]!" )
+parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choices,
+                   help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
 
 (options, args ) = parser.parse_args()
+
+now = datetime.datetime.now()
+isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
+options.isodatetime = isodatetime
+
+date = '%F %H:%M:%S'
+format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
+logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )
+
+# Write everything into a log file in the directory you are submitting from.
+formatter = logging.Formatter( format )
+log_file_name = 'music_crab_' + options.isodatetime + '.log'
+hdlr = logging.FileHandler( log_file_name, mode='w' )
+hdlr.setFormatter( formatter )
+log.addHandler( hdlr )
 
 if len( args ) < 1:
     parser.error( 'DATASET_FILE required' )
@@ -136,11 +161,11 @@ else:
             pset = os.path.join( options.config_dir, pset.strip() )
             break
     else:
-        print 'No CMSSW config file specified!'
-        print 'Either add it to the sample file or add it to the command line.'
+        log.error( 'No CMSSW config file specified!' )
+        log.error( 'Either add it to the sample file or add it to the command line.' )
         sys.exit(1)
 
-print 'Reading config', pset
+log.info( "Reading config: '%s'" % pset )
 file = open( pset )
 cfo = imp.load_source("pycfg", pset, file )
 del file
@@ -198,21 +223,21 @@ for line in sample_file:
         # Set max. time to 3*24*60*60 sec = 3 days
         max_time = 259200.0
         if os.path.isfile( wall_filename ):
-            print 'Using %s...' % wall_filename
+            log.info( "Using file '%s'..." % wall_filename )
         else:
-            print 'Generating %s...' % wall_filename
+            log.info( "Generating file '%s'..." % wall_filename )
             wall_file = open( wall_filename, 'wb' )
             wall_file.write( str( max_time ) )
 
         if os.path.isfile( cpu_filename ):
-            print 'Using %s...' % cpu_filename
+            log.info( "Using file '%s'..." % cpu_filename )
         else:
-            print 'Generating %s...' % cpu_filename
+            log.info( "Generating file '%s'..." % cpu_filename )
             cpu_file = open( cpu_filename, 'wb' )
             cpu_file.write( str( max_time ) )
 
-    print '%s:' % name
-    print 'Generating CRAB cfg...'
+    log.info( "Working on '%s'..." % name )
+    log.info( 'Generating CRAB cfg...' )
     config = ConfigParser.RawConfigParser()
     config.add_section( 'CRAB' )
     config.set( 'CRAB', 'jobtype', 'cmssw' )
@@ -276,8 +301,7 @@ for line in sample_file:
     del config
     del cfg_file
 
- 
-    print 'Generating CMSSW config...'
+    log.info( 'Generating CMSSW config...' )
     process.Skimmer.FileName = name+'.pxlio'
     process.Skimmer.Process = name
 
@@ -287,7 +311,7 @@ for line in sample_file:
     #
     # FIXME: This should be removed (or updated) for SU12 and newer samples.
     #
-    print "sample:",sample
+    log.debug( "Full sample name:\n" + sample )
     if 'Fall11' in sample:
         if 'START42' in sample:
             process.GlobalTag.globaltag = 'START44_V12::All'
@@ -298,12 +322,12 @@ for line in sample_file:
         elif 'START44_V10' in sample:
             process.GlobalTag.globaltag = 'START44_V10D::All'
         elif 'START44' in sample:
-            print "Unknown sample type: '%s'. Using Global Tag from config file." % sample
+            log.warning( "Unknown sample type: '%s'. Using Global Tag from config file." % sample )
         else:
-            print "Sample '%s' apparently not processed with CMSSW 4XY. Aborting!" % sample
+            log.error( "Sample '%s' apparently not processed with CMSSW 4XY. Aborting!" % sample )
             sys.exit( 2 )
 
-        print "INFO (%s): Using global tag: '%s'" % ( sys.argv[0].split( '/' )[-1], process.GlobalTag.globaltag )
+        log.info( "Using global tag %s" % ( process.GlobalTag.globaltag.pythonValue() ) )
 
     pset_file = open( name+'_cfg.py', 'w' )
     pset_file.write( "import FWCore.ParameterSet.Config as cms\n" )
@@ -316,14 +340,14 @@ for line in sample_file:
     if options.scheduler != 'remoteGlidein':
         command_submit = [ 'crab', '-create', '-submit', '-cfg', name + '.cfg' ]
         if not options.dry_run:
-            print 'done and submitting...'
+            log.info( 'Done and submitting...' )
             subprocess.call( command_submit )
         else:
-            print 'done and creating crab jobs...'
+            log.info( 'Done and creating crab jobs...' )
             subprocess.call( command_create )
-            print 'Dry-run: Created task. crab command would have been: ', ' '.join( command_submit )
+            log.info( 'Dry-run: Created task. crab command would have been: ', ' '.join( command_submit ) )
     else:
-        print 'creating crab task...'
+        log.info( 'Creating crab task...' )
 
         proc = subprocess.Popen( command_create, stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
         output = proc.communicate()[0]
@@ -344,3 +368,5 @@ for line in sample_file:
 
             # Last one:
             crabSubmit( options, workDir, first=start, last=totalNumJobs )
+
+log.info( 'Done!' )
