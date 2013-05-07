@@ -8,6 +8,7 @@ import time
 import imp
 import pickle
 import optparse
+import re
 import logging
 import ConfigParser
 
@@ -69,6 +70,102 @@ def crabSubmit( options, workDir, first=None, last=None ):
         subprocess.call( cmd )
 
 
+def createTag( options, skimmer_dir ):
+    # Save the current working directory to get back here later.
+    workdir = os.getcwd()
+
+    def gitCheckRepo( skimmer_dir ):
+        os.chdir( skimmer_dir )
+
+        cmd = [ 'git', 'diff-index', '--name-only', 'HEAD' , '--' ]
+        proc = subprocess.Popen( cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
+        output = proc.communicate()[0]
+        retcode = int( proc.returncode )
+
+        if retcode != 0:
+            log.warning( "Failed command: " + ' '.join( cmd ) )
+            log.debug( 'Full output:\n' + output )
+            return False
+        else:
+            if output:
+                error  = "Repository in '%s' has uncommitted changes.\n" % skimmer_dir
+                error += "It is strongly recommended that you commit your changes and rerun this script.\n"
+                error += "If you know what you are doing, you can use the '--no-tag' option to submit anyway!"
+                log.error( error )
+                return False
+            return True
+
+    def gitTag( tag, skimmer_dir ):
+        os.chdir( skimmer_dir )
+
+        log.info( "Creating tag in '%s'" % skimmer_dir )
+
+        message = "'Auto-tagged by music_crab!'"
+        cmd = [ 'git', 'tag', '-a', tag, '-m', message ]
+        log.debug( 'Calling git command: ' + ' '.join( cmd ) )
+        retcode = subprocess.call( cmd )
+
+        if retcode != 0:
+            log.warning( "Failed command: " + ' '.join( cmd ) )
+            return False
+        else:
+            log.info( "Created git tag '%s' in '%s'" % ( tag, skimmer_dir ) )
+            return True
+
+    if not gitCheckRepo( skimmer_dir ):
+        raise Exception( "git repository in '%s' dirty!" % skimmer_dir )
+
+    # The tag is always the date and time with a 'v' prefixed.
+    tag = 'v' + options.isodatetime
+
+    # Call git to see if the commit is already tagged.
+    cmd = [ 'git', 'log', '-1', '--pretty=%h%d', '--decorate=full' ]
+    log.debug( 'Checking commit for tags: ' + ' '.join( cmd ) )
+    proc = subprocess.Popen( cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
+    output = proc.communicate()[0]
+
+    # There should only be one line.
+    line = output.splitlines()[0]
+
+    success = False
+    if not 'tags' in line:
+        success = gitTag( tag, skimmer_dir )
+    else:
+        commit, line = line.split( ' ', 1 )
+        info = line.split( ',' )
+        head = info[0].strip( '() ' )
+        branch = info[-1].strip( '() ' )
+
+        del info[0]
+        del info[-1]
+
+        tags = []
+
+        for part in info:
+            if 'tags' in part:
+                tags.append( part.strip( '() ' ).split( '/' )[-1] )
+
+        log.debug( "In commit '" + commit + "', found tags: " + ', '.join( tags ) )
+
+        pattern = r'v\d\d\d\d-\d\d-\d\d_\d\d.\d\d.\d\d'
+        for t in tags:
+            matched = re.match( pattern, t )
+            if matched:
+                log.info( "Found tag '%s', not creating a new one!" % t )
+                tag = t
+                break
+        else:
+            success = gitTag( tag, skimmer_dir )
+
+    os.chdir( workdir )
+
+    log.info( "Using Skimmer version located in '%s'." % skimmer_dir )
+
+    if success:
+        log.info( "Using Skimmer version tagged with '%s'." % tag )
+
+
+skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject' )
 lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
 config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
 
@@ -96,6 +193,8 @@ parser.add_option( '-m', '--no-more-time', action='store_false', default=False,
                    help="By default, the limit on the wall clock time and cpu time will be increased to 72 h with help of config files (this is a workaround for 'remoteGlidein' only). Use this option, if you don't want this behaviour [default: %default]!" )
 parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choices,
                    help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
+parser.add_option( '--no-tag', action='store_true', default=False,
+                   help="Do not create a tag in the skimmer repository. [default: %default]" )
 
 (options, args ) = parser.parse_args()
 
@@ -178,6 +277,12 @@ user = os.getenv( 'LOGNAME' )
 dcms_blacklist = [ 'malhotra' ]
 allow_dcms = not user in dcms_blacklist
 
+if not options.no_tag:
+    try:
+        createTag( options, skimmer_dir )
+    except Exception, e:
+        log.error( e )
+        sys.exit( 3 )
 
 for line in sample_file:
     line = line.strip()
