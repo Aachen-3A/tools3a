@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import datetime
+import glob
 import os
 import sys
 import subprocess
@@ -165,6 +166,29 @@ def createTag( options, skimmer_dir ):
         log.info( "Using Skimmer version tagged with '%s'." % tag )
 
 
+def getExistingProcesses():
+    workdir = os.getcwd()
+
+    checkDirs = [
+        workdir,
+        os.path.join( workdir, 'done' ),
+        ]
+
+    processes = {}
+    for dir in checkDirs:
+        log.debug( "Checking directory '%s' for existing CRAB tasks..." % dir )
+        for task in glob.glob( os.path.join( dir, 'crab_?_*' ) ):
+            log.debug( "Found existing CRAB task '%s'." % task )
+            config = pickle.load( open( os.path.join( task, 'job', 'CMSSW.py.pkl' ) ) )
+
+            process = config.Skimmer.Process.pythonValue().strip( "' " )
+            log.debug( "Process name is '%s'." % process )
+
+            processes[ process ] = task
+
+    return processes
+
+
 skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject' )
 lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
 config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
@@ -195,6 +219,8 @@ parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choic
                    help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
 parser.add_option( '--no-tag', action='store_true', default=False,
                    help="Do not create a tag in the skimmer repository. [default: %default]" )
+parser.add_option( '-S', '--submit', action='store_true', default=False,
+                   help='Force the submission of jobs, even if a CRAB task with the given process name already exists. [default: %default]' )
 
 (options, args ) = parser.parse_args()
 
@@ -284,6 +310,11 @@ if not options.no_tag:
         log.error( e )
         sys.exit( 3 )
 
+
+# Before submitting anything, check existing jobs:
+existing = getExistingProcesses()
+
+skipped = {}
 for line in sample_file:
     line = line.strip()
     if not line or line.startswith( COMMENT_CHAR ): continue
@@ -304,6 +335,14 @@ for line in sample_file:
         lumi_mask = None
 
     (name,sample) = first_part.split( ':' )
+
+    if name in existing.keys():
+        log.warning( "Found existing CRAB task (%s) with process name '%s'!" % ( existing[ name ], name ) )
+        if not options.submit:
+            log.warning( "Skipping sample '%s'..." % sample )
+            log.info( "If you want to submit it anyway, run again with '--submit'." )
+            skipped[ name ] = sample
+            continue
 
     setJobsNumber = False
 
@@ -474,4 +513,16 @@ for line in sample_file:
             # Last one:
             crabSubmit( options, workDir, first=start, last=totalNumJobs )
 
-log.info( 'Done!' )
+log.info( 'Done submitting!' )
+
+if skipped:
+    longest_process = max( map( len, skipped.keys() ) )
+    longest_sample  = max( map( len, skipped.values() ) )
+
+    info = "Not submitted the following samples:"
+    for process, sample in sorted( skipped.items() ):
+        info += '\n'
+        info += str( process + ': ' ).ljust( longest_process + 2 )
+        info += sample.ljust( longest_sample )
+
+    log.info( info )
