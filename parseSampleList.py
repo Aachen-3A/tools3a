@@ -98,10 +98,14 @@ def main():
                     for g in shower:
                         samplename = re.sub( r'(?i).' + g, '', samplename )
 
+                    # Fill the list of samplenames + datasets into a defaultdict by timestamp
+                    #
                     gen[2][ timestamp ].append( samplename + ':' + dataset )
                     break
             else:
                 unkown_gen.append( samplename )
+            # The following ist needed for the console output.
+            #
             samplename += ':'
             print_list[ dataset ] = samplename
 
@@ -111,8 +115,13 @@ def main():
         if gen[2].items():
             for timestamp, datasets in sorted( gen[2].items() ):
 
+                # Create generic filenames by incrementing 'number' for the amount of timestamps
+                # found and adding 'number' to the end of the filename.
+                #
                 if not options.no_timestamp:
                     gen_file_name = 'mc_' + options.prefix + gen[0] + '_%02d'%number + '.txt'
+                # If not split by timestamps, we only need one filename.
+                #
                 else:
                     gen_file_name = 'mc_' + options.prefix + gen[0] + '.txt'
 
