@@ -421,6 +421,7 @@ for line in sample_file:
     config.add_section( 'USER' )
     config.set( 'USER', 'return_data', '0' )
     config.set( 'USER', 'copy_data', '1' )
+    config.set( 'USER', 'xml_report', 'crab_status.xml' )
     if options.scheduler == 'remoteGlidein' and not options.no_more_time:
         config.set( 'USER', 'additional_input_files', '%s,%s' % ( wall_filename, cpu_filename ) )
     if allow_dcms:
