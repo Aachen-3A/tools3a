@@ -205,7 +205,7 @@ parser.add_option( '-l', '--lumimask', metavar='FILE', help='Use JSON file FILE 
 parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
 parser.add_option( '-t', '--total', metavar='NUMBER', default='-1', help='Only analyze NUMBER events/lumis [default: %default; means all]' )
 parser.add_option( '-j', '--perJob', metavar='NUMBER', default='unset',
-                   help="Analyze NUMBER events per job (MC) or lumis per job (data) [default: 50000 events or 20 lumis]. Use '--perJob=auto' for an automatic number that implies submitting < 500 jobs when running without the server." )
+                   help="Analyze NUMBER events per job (MC) or lumis per job (data) [default: 25000 events or 20 lumis]. Use '--perJob=auto' for an automatic number that implies submitting < 500 jobs when running without the server." )
 parser.add_option( '-s', '--server', action='store_true', default=False, help='Use the CRAB server [default: %default]' )
 parser.add_option( '-g', '--scheduler', metavar='SCHEDULER', default='remoteGlidein',
                    help="Use scheduler SCHEDULER. ('--scheduler=glidein' implies '--server', '--scheduler=remoteGlidein' implies server cannot be used). \
@@ -258,7 +258,7 @@ else:
 outname += '/'
 
 lumisPerJob = 20
-eventsPerJob = 50000
+eventsPerJob = 25000
 maxNumJobs = 500
 maxNumJobsRG = 5000
 
