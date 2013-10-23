@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import datetime
+import fnmatch
 import glob
 import os
 import sys
@@ -221,6 +222,10 @@ parser.add_option( '--no-tag', action='store_true', default=False,
                    help="Do not create a tag in the skimmer repository. [default: %default]" )
 parser.add_option( '-S', '--submit', action='store_true', default=False,
                    help='Force the submission of jobs, even if a CRAB task with the given process name already exists. [default: %default]' )
+parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
+                   help='Only submit samples matching PATTERNS (bash-like ' \
+                        'patterns only, comma separated values. ' \
+                        'E.g. --only QCD* ). [default: %default]' )
 
 (options, args ) = parser.parse_args()
 
@@ -270,7 +275,13 @@ if options.blacklist:
     options.blacklist = 'T0,T1,'+options.blacklist
 else:
     options.blacklist = 'T0,T1'
-    
+
+if options.only:
+    # 'PATTERNS' should be a comma separated list of strings.
+    # Remove all empty patterns and those containing only whitespaces.
+    options.only = options.only.split( ',' )
+    options.only = filter( lambda x: x.strip(), options.only )
+    log.debug( "Only submitting samples matching patterns '%s'." % ','.join( options.only ) )
 
 sample_file = open( args[0] )
 if options.config:
@@ -320,6 +331,19 @@ for line in sample_file:
     if not line or line.startswith( COMMENT_CHAR ): continue
     if COMMENT_CHAR in line:
         line, comment = line.split( COMMENT_CHAR, 1 )
+
+    skip = False
+    if options.only:
+        for pattern in options.only:
+            if fnmatch.fnmatchcase( line, pattern ):
+                # One of the patterns does match, no need to continue.
+                break
+            else:
+                # Found none matching, skip submission.
+                skip = True
+    if skip:
+        log.debug( "Skipping sample '%s' (not matching any patterns)." % line )
+        continue
 
     #lumi-mask and lumis-per-job can be specified in the command line
     if ';' in line:
