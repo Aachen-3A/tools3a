@@ -406,6 +406,8 @@ for line in sample_file:
 
     log.info( "Working on '%s'..." % name )
     log.info( 'Generating CRAB cfg...' )
+
+    crab_dir = 'crab_' + name
     config = ConfigParser.RawConfigParser()
     config.add_section( 'CRAB' )
     config.set( 'CRAB', 'jobtype', 'cmssw' )
@@ -446,6 +448,7 @@ for line in sample_file:
     config.set( 'USER', 'return_data', '0' )
     config.set( 'USER', 'copy_data', '1' )
     config.set( 'USER', 'xml_report', 'crab_status.xml' )
+    config.set( 'USER', 'ui_working_dir', crab_dir )
     if options.scheduler == 'remoteGlidein' and not options.no_more_time:
         config.set( 'USER', 'additional_input_files', '%s,%s' % ( wall_filename, cpu_filename ) )
     if allow_dcms:
@@ -506,9 +509,10 @@ for line in sample_file:
 
     command_create = [ 'crab', '-create', '-cfg', name + '.cfg' ]
     if options.scheduler != 'remoteGlidein':
-        command_submit = [ 'crab', '-create', '-submit', '-cfg', name + '.cfg' ]
+        command_submit = [ 'crab', '-submit', '-c', crab_dir ]
         if not options.dry_run:
             log.info( 'Done and submitting...' )
+            subprocess.call( command_create )
             subprocess.call( command_submit )
         else:
             log.info( 'Done and creating crab jobs...' )
