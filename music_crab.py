@@ -53,7 +53,7 @@ def parseCrabOutput( output ):
     return workDir, totalNumJobs
 
 
-def crabSubmit( options, workDir, first=None, last=None ):
+def crabSubmit( options, workDir, first=None, last=None, numRetry=10 ):
     cmd = [ 'crab' ]
 
     if first != None and last != None:
@@ -69,7 +69,18 @@ def crabSubmit( options, workDir, first=None, last=None ):
         log.info( 'Dry-run: crab command would have been: ' + ' '.join( cmd ) )
     else:
         log.info( 'Done and submitting...' )
-        subprocess.call( cmd )
+
+        num = 0
+        while num < numRetry:
+            retcode = subprocess.call( cmd )
+            if retcode == 0:
+                break
+            else:
+                num += 1
+                log.debug( "Could not submit '%s', retrying (%i/%i)..." % ( workDir, num, numRetry ) )
+        else:
+            log.error( "Could not submit '%s', aborting!" % workDir )
+            sys.exit( retcode )
 
 
 def createTag( options, skimmer_dir ):
