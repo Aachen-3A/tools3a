@@ -60,6 +60,9 @@ def main():
     generators.append( [ 'pythia8',  'P8', [] ] )
     generators.append( [ 'pythia',   'PY', [] ] )
     generators.append( [ 'comphep',  'CH', [] ] )
+    generators.append( [ 'gg2ww',    'GG', [] ] )
+    generators.append( [ 'gg2zz',    'GG', [] ] )
+    generators.append( [ 'gg2vv',    'GG', [] ] )
 
     print_list = {}
 
@@ -99,10 +102,15 @@ def main():
                         if options.postfix: samplename += '_' + options.postfix
                         samplename += '_' + value
 
-                        # If the showering is done with pythia and this is also given in
-                        # the original sample name delete 'pythia' from samplename
-                        #
-                        for g in [ 'pythia8', 'pythia6', 'pythia' ]:
+                        # If the showering is done with pythia or herwig and
+                        # this is also given in the original sample name delete
+                        # it from the sample name.
+                        shower = [ 'pythia8',
+                                   'pythia6',
+                                   'pythia',
+                                   'herwigpp',
+                                   ]
+                        for g in shower:
                             samplename = re.sub( r'(?i).' + g, '', samplename )
 
                         samples.append( samplename + ':' + dataset )
