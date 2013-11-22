@@ -490,6 +490,7 @@ for line in sample_file:
     log.info( 'Generating CMSSW config...' )
     process.Skimmer.FileName = name+'.pxlio'
     process.Skimmer.Process = name
+    process.Skimmer.Dataset = sample
 
     pset_file = open( name+'_cfg.py', 'w' )
     pset_file.write( "import FWCore.ParameterSet.Config as cms\n" )
