@@ -57,7 +57,12 @@ def crabSubmit( options, workDir, first=None, last=None, numRetry=10 ):
     cmd = [ 'crab' ]
 
     if first != None and last != None:
-        range = '%i-%i' % ( first, last )
+        if first == last:
+            # If only one job N is submitted a comma must be added
+            # to distiguish from submitting the first N jobs.
+            range = '%i,' % ( last )
+        else:
+            range = '%i-%i' % ( first, last )
         cmd += [ '-submit', range ]
     else:
         cmd += [ '-submit' ]
