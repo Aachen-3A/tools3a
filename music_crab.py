@@ -182,6 +182,8 @@ def createTag( options, skimmer_dir ):
     if success:
         log.info( "Using Skimmer version tagged with '%s'." % tag )
 
+    return tag
+
 
 def getExistingProcesses():
     workdir = os.getcwd()
@@ -233,7 +235,7 @@ parser.add_option( '-g', '--scheduler', metavar='SCHEDULER', default='remoteGlid
 In case '--scheduler=remoteGlidein', the number of events/lumi per job is adjusted, so that the total number of jobs in each task does not exceed 5000. [default: %default]" )
 parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1' )
 parser.add_option( '-d', '--dbs-url', metavar='DBSURL', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
-parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB' )
+parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB or registering samples to the database.' )
 parser.add_option( '-m', '--no-more-time', action='store_false', default=False,
                    help="By default, the limit on the wall clock time and cpu time will be increased to 72 h with help of config files (this is a workaround for 'remoteGlidein' only). Use this option, if you don't want this behaviour [default: %default]!" )
 parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choices,
@@ -246,6 +248,8 @@ parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
                    help='Only submit samples matching PATTERNS (bash-like ' \
                         'patterns only, comma separated values. ' \
                         'E.g. --only QCD* ). [default: %default]' )
+parser.add_option( '-D', '--db', action='store_true', default=False,
+                       help="Register all datasets at the database: 'https://cern.ch/aix3adb/'. [default: %default]" )
 
 (options, args ) = parser.parse_args()
 
@@ -303,6 +307,10 @@ if options.only:
     options.only = filter( lambda x: x.strip(), options.only )
     log.debug( "Only submitting samples matching patterns '%s'." % ','.join( options.only ) )
 
+# These are needed for registering samples at the DB.
+runOnData = False
+runOnMC   = False
+
 sample_file = open( args[0] )
 if options.config:
     pset = options.config
@@ -312,6 +320,14 @@ else:
         if not line or line.startswith( COMMENT_CHAR ): continue
         if COMMENT_CHAR in line:
             line, comment = line.split( COMMENT_CHAR, 1 )
+        if line.startswith( 'generator' ):
+            ( junk, generator ) = line.split( '=' )
+            runOnMC = True
+        if line.startswith( 'CME' ):
+            ( junk, energy ) = line.split( '=' )
+        if line.startswith( 'DCSOnly' ):
+            ( junk, DCSOnly_json ) = line.split( '=' )
+            runOnData = True
         if line.startswith( 'config' ):
             (junk,pset) = line.split( '=' )
             pset = os.path.join( options.config_dir, pset.strip() )
@@ -336,7 +352,7 @@ allow_dcms = not user in dcms_blacklist
 
 if not options.no_tag:
     try:
-        createTag( options, skimmer_dir )
+        gitTag = createTag( options, skimmer_dir )
     except Exception, e:
         log.error( e )
         sys.exit( 3 )
@@ -344,6 +360,18 @@ if not options.no_tag:
 
 # Before submitting anything, check existing jobs:
 existing = getExistingProcesses()
+
+if options.db:
+    import MUSiCProject.Tools.aix3adb as aix3adb
+
+    # Create a database object.
+    dblink = aix3adb.aix3adb()
+
+    # Authorize to database.
+    log.info( "Connecting to database: 'http://cern.ch/aix3adb'" )
+    dblink.authorize()
+    log.info( 'Authorized to database.' )
+
 
 skipped = {}
 for line in sample_file:
@@ -537,6 +565,77 @@ for line in sample_file:
 
             # Last one:
             crabSubmit( options, workDir, first=start, last=totalNumJobs )
+
+    if options.db:
+        # Collect dataset information to be added to the database.
+        datasetInfos = dict()
+
+        datasetInfos[ 'original_name' ] = sample
+        datasetInfos[ 'energy' ] = energy
+        datasetInfos[ 'iscreated' ] = 1
+        datasetInfos[ 'skimmer_name' ] = 'MUSiCSkimmer'
+        datasetInfos[ 'skimmer_cmssw' ] = os.getenv( 'CMSSW_VERSION' )
+        datasetInfos[ 'skimmer_globaltag' ] = str( process.GlobalTag.globaltag ).split( "'" )[1]
+        if options.no_tag:
+            datasetInfos[ 'skimmer_version' ] = 'Not tagged'
+        else:
+            datasetInfos[ 'skimmer_version' ] = gitTag
+
+        datasetTags = dict()
+        datasetTags[ 'MUSiC_Skimming_cfg' ] = pset
+        datasetTags[ 'MUSiC_Processname' ] = name
+
+        log.info( "Registering '%s' at database 'http://cern.ch/aix3adb'. " % name )
+
+        # Create a text file in the crab folder to log the database ID.
+        # This ID is unique for each database entry.
+        DBconfig = ConfigParser.SafeConfigParser()
+        DBconfig.add_section( 'DB' )
+
+        if runOnMC == True:
+            datasetInfos[ 'generator' ] = generator
+            datasetInfos[ 'tags' ] = datasetTags
+
+            if not options.dry_run:
+                # Send all info on this MC sample to the database.
+                DBentry = dblink.registerMCSample( datasetInfos )
+                log.debug( DBentry )
+                DBconfig.set( 'DB', 'ID', str( DBentry[ 'id' ] ) )
+                DBconfig.set( 'DB', 'Table', 'MC samples' )
+            else:
+                log.info( 'Dry-run: Would have registered this MC sample at database:\n%s' % datasetInfos )
+
+        elif runOnData == True:
+            # Syntax of the lumimask file: DCS-firstrun-lastrun.json
+            ( firstrun, lastrun ) = os.path.basename( lumi_mask).split( '.' )[0].split( '-' )[1:3]
+            datasetInfos[ 'firstrun' ] = firstrun
+            datasetInfos[ 'lastrun' ] = lastrun
+            datasetInfos[ 'jsonfile' ] = lumi_mask
+            datasetTags[ 'DCSOnly_JSON' ] = DCSOnly_json
+            datasetInfos[ 'tags' ] = datasetTags
+
+            if not options.dry_run:
+                # Send all info on this Data sample to the database.
+                DBentry = dblink.registerDataSample( datasetInfos )
+                log.debug( DBentry )
+                DBconfig.set( 'DB', 'ID', str( DBentry[ 'id' ] ) )
+                DBconfig.set( 'DB', 'Table', 'data samples' )
+            else:
+                log.info( 'Dry-run: Would have registered this Data sample at database:\n%s' % datasetInfos )
+        else:
+            log.error( "Not all necessary arguments given in config: '%s'." % sample_file )
+
+        DBcfg_path = os.path.join( crab_dir, 'aix3adb.cfg' )
+        DBcfg_file = open( DBcfg_path, 'w+'  )
+        DBconfig.write( DBcfg_file )
+        log.info( "Created file: '%s'" % DBcfg_path )
+        del DBconfig
+        del DBcfg_file
+
+if options.db:
+    # Log-off from database.
+    dblink.destroyauth()
+    log.info( 'Closed connection to database.' )
 
 log.info( 'Done submitting!' )
 
