@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import datetime
+import logging
 import sys
 import os
 import optparse
@@ -9,7 +10,9 @@ from ConfigParser import SafeConfigParser
 import subprocess
 from fnmatch import fnmatch
 from FWCore.PythonUtilities.LumiList import LumiList
+from collections import defaultdict
 
+log = logging.getLogger( 'lumi' )
 
 lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
 lumi_map_file = os.path.join( lumi_dir, 'lumi-map.txt' )
@@ -27,8 +30,20 @@ parser.add_option(       '--lumiCalc2', action = 'store_true', default = False,
 parser.add_option( '-o', '--output', metavar='OUTFILE', help='Store output in OUTFILE [default: lumi-<date>.txt]' )
 parser.add_option( '-w', '--without', action = 'store_true', default = False,
                    help = 'Do not use correction in lumi calculation (lumiCalc2.py and pixelLumiCalc.py only). [default: %default]' )
+parser.add_option( '-D', '--db', action='store_true', default=False,
+                   help="Publish lumi information to the database at 'https://cern.ch/aix3adb'. [default: %default]" )
+parser.add_option( '-O', '--overwrite', action='store_true', default=False,
+                   help='Overwrite all lumi information found in the database for given CRAB_TASKS. [default: %default]' )
+parser.add_option( '-n', '--dry-run', action='store_true', default=False,
+                   help='Do not publish anything to the database, just report what would happen. [default: %default]' )
+parser.add_option(       '--debug', metavar='LEVEL', default='INFO',
+                   help='Set the debug level. Allowed values: ERROR, WARNING, INFO, DEBUG. [default: %default]' )
 
 (options, tasks ) = parser.parse_args()
+
+# Configure the logger.
+format = '%(levelname)s at %(asctime)s: %(message)s'
+logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt='%F %H:%M:%S' )
 
 # default unit is /pb
 units = dict( [ ['/\xce\xbcb', 1e-6 ], [ '/ub', 1e-6 ], [ '/nb', 1e-3 ], [ '/pb', 1 ], [ '/fb', 1e3 ] ] ) # \xce\xbc represents the 'micro sign' in unicode
@@ -51,6 +66,13 @@ else:
 if not options.output:
    options.output = 'lumi-' + date + '.txt'
 
+if options.db:
+   # Create a database object.
+   sys.path.append( os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Tools/scripts' ) )
+   import crab2aix3adb
+   c2aix3adb = crab2aix3adb.Crab2aix3adb()
+
+
 #generate the lumi-mask map
 lumi_map = []
 if not options.all_lumi:
@@ -63,6 +85,8 @@ if not options.all_lumi:
             lumi_map.append( (pattern, file, lumis) )
 
 jsons_to_read = []
+if options.db:
+   infosForDB_by_json = defaultdict( list )
 #now work on all tasks
 for task in tasks:
    #get the datasetpath and output file name
@@ -93,6 +117,12 @@ for task in tasks:
    output_lumis.writeJSON( output_file_name )
    jsons_to_read.append( output_file_name )
    print 'Task %s with dataset %s written to %s' % (task, datasetpath, output_file_name)
+
+   if options.db:
+      tableType, DB_ID = c2aix3adb.parseDBconfig( task )
+      infosForDB_by_json[ output_file_name ].append( tableType )
+      infosForDB_by_json[ output_file_name ].append( DB_ID )
+
 
 # use tee to redirect stdout to a file
 tee = subprocess.Popen( [ 'tee', options.output ], stdin = subprocess.PIPE )
@@ -147,3 +177,33 @@ for json in jsons_to_read:
    rec_lumi = float( split_line[4] )
    rec_lumi *= conversion
    print rec_lumi
+
+
+   if options.db:
+   # Register luminosity information at the database.
+      for tag, infosForDB in infosForDB_by_json.items():
+         if tag == json:
+
+            # Create a DB sample and fill it with the lumi info.
+            sample = dict()
+            sample[ 'luminosity' ] = rec_lumi
+            sample[ 'luminosity_reference' ] = options.lumi
+
+            tableType = infosForDB[0]
+            DB_ID = infosForDB[1]
+
+            if tableType == 'data samples':
+               log.info( "Adding luminosity information for DB sample '%s' to table '%s'." % ( DB_ID, tableType ) )
+               dbEntry = c2aix3adb.dblink.getDataSample( DB_ID )
+               previousInfo = dbEntry.get( 'luminosity' )
+               if not previousInfo or options.overwrite:
+                  if options.dry_run:
+                     log.debug( "dry-run -- Would have called: 'editDataSample( %s, %s )'." % ( DB_ID, tableType ) )
+                  else:
+                     c2aix3adb.dblink.editDataSample( DB_ID, sample )
+               else:
+                  log.warning( "DB entry '%s' already contains information. Use '--overwrite' if you want to update it!" % DB_ID )
+
+            else:
+               log.error( 'You can only get the luminosity for data jobs!' )
+               sys.exit(1)
