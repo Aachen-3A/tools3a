@@ -91,7 +91,14 @@ if options.db:
 for task in tasks:
    #get the datasetpath and output file name
    parser = SafeConfigParser()
-   parser.read( os.path.join( task, 'share/crab.cfg' ) )
+   crabCfgPath = os.path.join( task, 'share/crab.cfg' )
+   if os.path.exists( crabCfgPath ):
+       # If no given file exists 'parser.read()' returns an empty list, but
+       # will carry on.
+       parser.read( crabCfgPath )
+   else:
+       log.error( "Cannot find file: '%s'" % crabCfgPath )
+       sys.exit(1)
    output_file_name = os.path.splitext( os.path.basename( parser.get( 'CMSSW', 'output_file' ) ) )[0] + '.json'
    datasetpath = parser.get( 'CMSSW', 'datasetpath' )
    #read the analyzed lumis
