@@ -321,12 +321,12 @@ else:
         if COMMENT_CHAR in line:
             line, comment = line.split( COMMENT_CHAR, 1 )
         if line.startswith( 'generator' ):
-            ( junk, generator ) = line.split( '=' )
+            generator = line.split( '=' )[1].strip()
             runOnMC = True
         if line.startswith( 'CME' ):
-            ( junk, energy ) = line.split( '=' )
+            energy = line.split( '=' )[1].strip()
         if line.startswith( 'DCSOnly' ):
-            ( junk, DCSOnly_json ) = line.split( '=' )
+            DCSOnly_json = line.split( '=' )[1].strip()
             runOnData = True
         if line.startswith( 'config' ):
             (junk,pset) = line.split( '=' )
