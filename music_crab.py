@@ -17,17 +17,15 @@ import ConfigParser
 log = logging.getLogger( 'music_crab' )
 
 def getNumberOfEvents( dataset ):
-    query = 'find sum(block.numevents) where dataset = ' + dataset
-    dbs_cmd = [ 'dbs', 'search', '--query', query ]
-    dbs_output = subprocess.Popen( dbs_cmd, stdout = subprocess.PIPE ).communicate()[0]
+    from dbs.apis.dbsClient import DbsApi
 
-    for i, line in enumerate( dbs_output.splitlines() ):
-        if 'sum_block.numevents' in line:
-            numEvents = dbs_output.splitlines()[ i + 2 ]
-            if numEvents.isdigit():
-                return int( numEvents )
-            else:
-                return 0
+    dbsUrl = 'https://cmsweb.cern.ch/dbs/prod/global/DBSReader'
+    dbsApi = DbsApi( url = dbsUrl )
+    datasetBlocks = dbsApi.listBlockSummaries( dataset = dataset )
+
+    numEvents = sum( [ block['num_event'] for block in datasetBlocks ] )
+
+    return numEvents
 
 
 def parseCrabOutput( output ):
