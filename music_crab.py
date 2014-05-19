@@ -490,6 +490,7 @@ for line in sample_file:
     config.set( 'CMSSW', 'output_file', name+'.pxlio' )
     if options.dbs_url:
         config.set( 'CMSSW', 'dbs_url', options.dbs_url )
+    config.set( 'CMSSW', 'allow_NonProductionCMSSW', '1' )
     config.add_section( 'USER' )
     config.set( 'USER', 'return_data', '0' )
     config.set( 'USER', 'copy_data', '1' )
