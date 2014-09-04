@@ -17,6 +17,10 @@ import ConfigParser
 log = logging.getLogger( 'music_crab' )
 
 def getNumberOfEvents( dataset ):
+    query = 'find sum(block.numevents) where dataset = ' + dataset
+    dbs_cmd = [ 'dbs', 'search', '--query', query ]
+    dbs_output = subprocess.Popen( dbs_cmd, stdout = subprocess.PIPE ).communicate()[0]
+
     from dbs.apis.dbsClient import DbsApi
 
     dbsUrl = 'https://cmsweb.cern.ch/dbs/prod/global/DBSReader'
@@ -490,7 +494,6 @@ for line in sample_file:
     config.set( 'CMSSW', 'output_file', name+'.pxlio' )
     if options.dbs_url:
         config.set( 'CMSSW', 'dbs_url', options.dbs_url )
-    config.set( 'CMSSW', 'allow_NonProductionCMSSW', '1' )
     config.add_section( 'USER' )
     config.set( 'USER', 'return_data', '0' )
     config.set( 'USER', 'copy_data', '1' )
