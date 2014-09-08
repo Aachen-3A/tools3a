@@ -57,8 +57,12 @@ def resubmit(taskList, status, overview):
         myTaskList=[taskList[overview.overview.cursor]]
     else:
         myTaskList=[]
+    jobsWithStatus=[]
     for task in myTaskList:
-        task.resubmitByStatus(status)
+        for job in task.jobs:
+            if job.status in status:
+                jobsWithStatus.append(job)
+
 class Overview:
     def __init__(self, stdscr, tasks):
         self.level = 0
@@ -67,7 +71,7 @@ class Overview:
         self.stdscr = stdscr
         self.taskOverviews = []
         self.overview = curseshelpers.SelectTable(stdscr, top=10, maxrows=100+len(tasks))
-        self.overview.setColHeaders(["Task", "Status", "Total", "Pend.", "Idle", "Run.","RRun.","Abrt.","Fail.","OK","None","Retr."])
+        self.overview.setColHeaders(["Task", "Status", "Total", "Pre Running", "Run.","RRun.","Abrt.","Fail.","OK","None","Retr."])
         for task in tasks:
             taskOverview = curseshelpers.SelectTable(stdscr, top=10, maxrows=100+len(task.jobs))
             taskOverview.setColHeaders(["Job", "Status", "FE-Status"])
@@ -87,7 +91,7 @@ class Overview:
             else:
                 printmode=curses.A_BOLD
             #prepare and add row
-            cells = [task.name, task.frontEndStatus, statusnumbers['total'], statusnumbers['PENDING'], statusnumbers['IDLE'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers[None], statusnumbers['RETRIEVED']]
+            cells = [task.name, task.frontEndStatus, statusnumbers['total'], statusnumbers['PENDING']+ statusnumbers['IDLE']+statusnumbers['SUBMITTED']+statusnumbers['REGISTERED'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers[None], statusnumbers['RETRIEVED']]
             self.overview.addRow(cells, printmode)
             taskOverview.clear()
             for job in task.jobs:
@@ -200,7 +204,7 @@ def main(stdscr, options, args, passphrase):
     curses.noecho()
     stdscr.keypad(1)
 
-    updateInterval=600
+    updateInterval=60
     lastUpdate=datetime.datetime.now()
 
     stdscr.addstr(0, 0, "cejobmonitor"+30*" ", curses.A_REVERSE)
@@ -211,10 +215,11 @@ def main(stdscr, options, args, passphrase):
     certtime=datetime.datetime.now()+datetime.timedelta(seconds=cesubmit.timeLeftVomsProxy())
     waitingForUpdate, waitingForExit = False, False
     overview=Overview(stdscr, taskList)
+    markForResubmission=[]
     pool=None
     while True:
         stdscr.addstr(1, 0, "Exit: q  Raise/lower update interval: +/- ("+str(updateInterval)+")  Update:  <SPACE>     ")
-        stdscr.addstr(2, 0, "Resubmit   F9: ABORTED,  F10: DONE-FAILED,  F11: (REALLY-)RUNNING,  F12: None")
+        stdscr.addstr(2, 0, "Resubmit   (1): ABORTED,  (2): DONE-FAILED,  (3): (REALLY-)RUNNING,  (4): None")
         stdscr.addstr(3, 0, "Next update {0}       ".format(timerepr(lastUpdate+datetime.timedelta(seconds=updateInterval)-datetime.datetime.now())))
         stdscr.addstr(4, 0, "Certificate expires {0}       ".format(timerepr(certtime-datetime.datetime.now())))
         if waitingForExit:
@@ -243,7 +248,10 @@ def main(stdscr, options, args, passphrase):
                     overview.update(taskList)
                     lastUpdate = datetime.datetime.now()
                 else:
-                    pool = multiprocessing.Pool(processes=1)
+                    for job in markForResubmission:
+                        job.resubmit()
+                    markForResubmission=[]
+                    pool = multiprocessing.Pool()
                     result = pool.map_async(checkTask, taskList)
                     pool.close()
                     waitingForUpdate=True
@@ -251,7 +259,7 @@ def main(stdscr, options, args, passphrase):
         if c == ord('+'):
             updateInterval+=60
         elif c == ord('-'):
-            updateInterval=max(60,updateInterval-60)
+            updateInterval=max(30,updateInterval-30)
         elif c == ord('q') or c == 27:
             if overview.level:
                 overview.up()
@@ -271,20 +279,23 @@ def main(stdscr, options, args, passphrase):
             overview.currentView.home()
         elif c == curses.KEY_END:
             overview.currentView.end()
-        elif c == curses.KEY_F9:
-            resubmit(taskList, ["ABORTED"], overview)
+        elif c == ord('1'):
+            markForResubmission.append(resubmit(taskList, ["ABORTED"], overview))
             overview.update(taskList)
-        elif c == curses.KEY_F10:
-            resubmit(taskList, ["DONE-FAILED"], overview)
+        elif c == ord('2'):
+            markForResubmission.append(resubmit(taskList, ["DONE-FAILED"], overview))
             overview.update(taskList)
-        elif c == curses.KEY_F11:
-            resubmit(taskList, ["RUNNING", "REALLY-RUNNING"], overview)
+        elif c == ord('3'):
+            markForResubmission.append(resubmit(taskList, ["RUNNING", "REALLY-RUNNING"], overview))
             overview.update(taskList)
-        elif c == curses.KEY_F12:
-            resubmit(taskList, ["None", None], overview)
+        elif c == ord('4'):
+            markForResubmission.append(resubmit(taskList, ["None", None], overview))
             overview.update(taskList)
         elif c == 10:
             overview.down()
+        elif c==ord('r') and overview.level==1:
+            markForResubmission.append(taskList[overview.currentTask].jobs[overview.currentJob])
+            taskList[overview.currentTask].jobs[overview.currentJob].frontEndStatus="Marked for resubmission"
         else:
             pass
             #stdscr.addstr(8,0,str(c))
