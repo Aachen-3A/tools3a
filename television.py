@@ -74,7 +74,7 @@ class Overview:
         self.overview.setColHeaders(["Task", "Status", "Total", "Pre Running", "Run.","RRun.","Abrt.","Fail.","OK","None","Retr."])
         for task in tasks:
             taskOverview = curseshelpers.SelectTable(stdscr, top=10, maxrows=100+len(task.jobs))
-            taskOverview.setColHeaders(["Job", "Status", "FE-Status"])
+            taskOverview.setColHeaders(["Job", "Status", "In Status since", "FE-Status", "Exit Code"])
             self.taskOverviews.append(taskOverview)
         self.update(tasks)
     def update(self, tasks):
@@ -98,16 +98,24 @@ class Overview:
                 try:
                     jobid = job.jobid
                 except AttributeError:
-                    jobid, jobstatus, jobfestatus=""
+                    jobid = ""
                 try:
                     jobstatus = job.status
                 except AttributeError:
-                    jobstatus =""
+                    jobstatus = ""
                 try:
                     jobfestatus = job.frontEndStatus
                 except AttributeError:
-                    jobfestatus=""
-                cells = [jobid, jobstatus, jobfestatus]
+                    jobfestatus = ""
+                try:
+                    jobreturncode=job.infos["ExitCode"]
+                except:
+                    jobreturncode=""
+                try:
+                    jobsince = datetime.datetime.fromtimestamp(int(job.infos["history"][-1][1])).strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    jobsince=""
+                cells = [jobid, jobstatus, jobsince, jobfestatus, jobreturncode]
                 if jobstatus in ['DONE-FAILED', 'ABORTED']:
                     printmode=curses.color_pair(1) | curses.A_BOLD
                 elif jobfestatus=="RETRIEVED":
@@ -140,55 +148,20 @@ class Overview:
     def down(self):
         self.level=min(self.level+1,2)
         self._refresh()
-    def _refresh(self):
+    def _refresh(self, taskList=None):
         if self.level==0:
             self.currentView = self.overview
         elif self.level==1:
             self.currentView = self.taskOverviews[self.currentTask]
         else:
+            pp = pprint.PrettyPrinter(indent=4)
             x=curseshelpers.Text(self.stdscr, top=10,maxrows=100)
-            x.setText("Blub")
+            try:
+                x.setText(pp.pformat(taskList[self.currentTask].jobs[self.currentJob].infos))
+            except:
+                x.setText("No infos found")
             self.currentView=x
         self.currentView.refresh()
-        
-        
-    def getOverviews(self, tasks, stdscr):
-        overview = curseshelpers.SelectTable(stdscr, top=10)
-        overview.setColHeaders(["Task", "Status", "Total", "Pend.", "Idle", "Run.","RRun.","Abrt.","Fail.","OK","None","Retr."])
-            #stdscr.addstr(10, 0, "Task                Status     Total Pend. Idle  Run.  RRun. Abrt. Fail. OK    None  Retr. ",curses.A_UNDERLINE)
-        taskOverviews=[]
-        for task in tasks:
-            statusnumbers=task.jobStatusNumbers()
-            #formatting
-            if statusnumbers['DONE-FAILED'] or statusnumbers['ABORTED']:
-                printmode=curses.color_pair(1) | curses.A_BOLD
-            elif task.frontEndStatus=="RETRIEVED":
-                printmode=curses.color_pair(2)
-            elif task.frontEndStatus=="RUNNING":
-                printmode=curses.color_pair(2) | curses.A_BOLD
-            else:
-                printmode=curses.A_BOLD
-            #prepare and add row
-            cells = [task.name, task.frontEndStatus, statusnumbers['total'], statusnumbers['PENDING'], statusnumbers['IDLE'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers[None]+statusnumbers["None"], statusnumbers['RETRIEVED']]
-            overview.addRow(cells, printmode)
-
-            taskOverview = curseshelpers.SelectTable(stdscr, top=10)
-            taskOverview.setColHeaders(["Job", "Status", "FE-Status"])
-            for job in task.jobs:
-                cells = [job.jobid, job.status, job.frontEndStatus]
-                if job.status in ['DONE-FAILED', 'ABORTED']:
-                    printmode=curses.color_pair(1) | curses.A_BOLD
-                elif job.frontEndStatus=="RETRIEVED":
-                    printmode=curses.color_pair(2)
-                elif "RUNNING" in job.status:
-                    printmode=curses.color_pair(2) | curses.A_BOLD
-                else:
-                    printmode=curses.A_BOLD
-                taskOverview.addRow(cells, printmode)
-            taskOverviews.append(taskOverview)
-
-        self.overview=overview
-        self.taskOverviews=taskOverviews
         
 def main(stdscr, options, args, passphrase):
    
