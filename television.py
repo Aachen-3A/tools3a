@@ -62,6 +62,7 @@ def resubmit(taskList, status, overview):
         for job in task.jobs:
             if job.status in status:
                 jobsWithStatus.append(job)
+    return jobsWithStatus
 
 class Overview:
     def __init__(self, stdscr, tasks):
@@ -249,9 +250,11 @@ def main(stdscr, options, args, passphrase):
                     lastUpdate = datetime.datetime.now()
                 else:
                     for job in markForResubmission:
+                        #print(str(job.infos["Status"]))
+                        #raw_input("bla")
                         job.resubmit()
                     markForResubmission=[]
-                    pool = multiprocessing.Pool()
+                    pool = multiprocessing.Pool(10)
                     result = pool.map_async(checkTask, taskList)
                     pool.close()
                     waitingForUpdate=True
@@ -280,16 +283,18 @@ def main(stdscr, options, args, passphrase):
         elif c == curses.KEY_END:
             overview.currentView.end()
         elif c == ord('1'):
-            markForResubmission.append(resubmit(taskList, ["ABORTED"], overview))
+            markForResubmission.extend(resubmit(taskList, ["ABORTED"], overview))
             overview.update(taskList)
         elif c == ord('2'):
-            markForResubmission.append(resubmit(taskList, ["DONE-FAILED"], overview))
+            markForResubmission.extend(resubmit(taskList, ["DONE-FAILED"], overview))
+            #for item in markForResubmission:
+                #print(str(item.infos["Status"]))
             overview.update(taskList)
         elif c == ord('3'):
-            markForResubmission.append(resubmit(taskList, ["RUNNING", "REALLY-RUNNING"], overview))
+            markForResubmission.extend(resubmit(taskList, ["RUNNING", "REALLY-RUNNING"], overview))
             overview.update(taskList)
         elif c == ord('4'):
-            markForResubmission.append(resubmit(taskList, ["None", None], overview))
+            markForResubmission.extend(resubmit(taskList, ["None", None], overview))
             overview.update(taskList)
         elif c == 10:
             overview.down()
