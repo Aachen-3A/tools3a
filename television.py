@@ -168,11 +168,11 @@ class Overview:
                 x.setText("Status information", "No information available")
             if self.tasks[self.currentTask].jobs[self.currentJob].frontEndStatus=="RETRIEVED":
                 try:
-                    x.addFile("stdout",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].resultSubDirectory,"out.txt"))
+                    x.addFile("stdout",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"out.txt"))
                 except:
-                    x.addText("stdout","could not find stdout")
+                    x.addText("stdout","could not find stdout"+ os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"out.txt"))
                 try:
-                    x.addFile("stderr",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].resultSubDirectory,"err.txt"))
+                    x.addFile("stderr",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"err.txt"))
                 except:
                     x.addText("stderr","could not find stderr")
                     
