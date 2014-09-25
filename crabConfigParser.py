@@ -14,8 +14,8 @@ class CrabConfigParser(ConfigParser):
     
     ## The constructor.
     def __init__(self):
-		ConfigParser.__init__(self)
-    
+        ConfigParser.__init__(self)
+        self.optionxform = str
     ## Write CrabConfigParser object to file
     # @type self: CrabConfigParser
     # @param self: The object pointer.
@@ -51,7 +51,9 @@ class CrabConfigParser(ConfigParser):
         sectionLines.append('\nconfig.section_("%s")'%section)
         configItems =  self.items(section)
         for configItem in configItems:
-            if "True" in configItem[1] or "False" in configItem[1]:
+            if not isinstance(configItem[1], basestring):
+                sectionLines.append('config.%s.%s = %s'%(section,configItem[0],configItem[1]))
+            elif "True" in configItem[1] or "False" in configItem[1]:
                 sectionLines.append('config.%s.%s = %s'%(section,configItem[0],configItem[1]))
             else:
                 try:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 ## @package music_crab3
 # MUSiC wrapper for crab3
 #
@@ -19,8 +20,8 @@ import logging
 import optparse
 import glob
 import subprocess
-
-
+import imp
+import pickle
 # some general definitions
 COMMENT_CHAR = '#'
 log_choices = [ 'ERROR', 'WARNING', 'INFO', 'DEBUG' ]
@@ -32,104 +33,7 @@ config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimmin
 
 # Parse user input    
 from crabConfigParser import CrabConfigParser
-parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
-parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
-parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/configs]' )
-parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
-parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
-                   help='Only submit samples matching PATTERNS (bash-like ' \
-                        'patterns only, comma separated values. ' \
-                        'E.g. --only QCD* ). [default: %default]' )
-parser.add_option( '-S', '--submit', action='store_true', default=False,
-                   help='Force the submission of jobs, even if a CRAB task with the given process name already exists. [default: %default]' )
-parser.add_option( '-d', '--dbsUrl', metavar='DBSURL',default='global', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
-parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB or registering samples to the database.' )
-parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choices,
-                   help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
-parser.add_option( '--no-tag', action='store_true', default=False,
-                   help="Do not create a tag in the skimmer repository. [default: %default]" )
-parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1 separated by comma, e.g. T2_DE_RWTH,T2_US_Purdue  ' )
-##              
-# new options since crab3
-##
-#new  options for General section
-parser.add_option( '--workingArea',metavar='DIR',default=None,help='The area (full or relative path) where to create the CRAB project directory. ' 
-                         'If the area doesn\'t exist, CRAB will try to create it using the mkdir command' \
-                         ' (without -p option). Defaults to the current working directory.'       )  
-parser.add_option( '-t', '--transferOutput', action='store_true',default=True,help="Whether to transfer the output to the storage site"
-                                                'or leave it at the runtime site. (Not transferring the output might'\
-                                                ' be useful for example to avoid filling up the storage area with'\
-                                                ' useless files when the user is just doing some test.) ' )  
-parser.add_option( '--log', action='store_true',default=False,help='Whether or not to copy the cmsRun stdout /'\
-                                                'stderr to the storage site. If set to False, the last 1 MB'\
-                                                ' of each job are still available through the monitoring in '\
-                                                'the job logs files and the full logs can be retrieved from the runtime site with') 
-parser.add_option( '--failureLimit', help='The number of jobs that may fail permanently before the entire task is cancelled. '\
-                                            'Defaults to 10% of the jobs in the task. ')
-# new feature alternative username
-parser.add_option( '-u','--user', help='Alternative username if local user name is not equal to HN-username [default is local name]')
-                                    
-# new options for JobType       
-parser.add_option('--pyCfgParams',default =None, help="List of parameters to pass to the CMSSW parameter-set configuration file, as explained here. For example, if set to "\
-"[\'myOption\',\'param1=value1\',\'param2=value2\'], then the jobs will execute cmsRun JobType.psetName myOption param1=value1 param2=value2. ")
-parser.add_option('--inputFiles',help='List of private input files needed by the jobs. ')
-parser.add_option('--outputFiles',help='List of output files that need to be collected, besides those already specified in the output'\
-                                            ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
-parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ') 
-parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
-parser.add_option('--maxjobruntime', default=72,help="Overwrite the maxjobruntime if present in samplefile [default: 72]" ) 
-parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" ) 
-parser.add_option('--priority', help='Task priority among the user\'s own tasks. Higher priority tasks will be processed before lower priority.'\
-                                                ' Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a'\
-                                                ' task are given a priority boost of 10. [default  10] ' ) 
-parser.add_option('-n','--name',help="Music Process name [default: /Music/{current_date}/]")
-parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: False]")
 
-#new options for Data
-parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: 10.000]")
-parser.add_option('--ignoreLocality',action='store_true',default=False,help="Set to True to allow jobs to run at any site,"
-                                                    "regardless of whether the dataset is located at that site or not. "\
-                                                    "Remote file access is done using Xrootd. The parameters Site.whitelist"\
-                                                    " and Site.blacklist are still respected. This parameter is useful to allow "\
-                                                    "jobs to run on other sites when for example a dataset is available on only one"\
-                                                    " or a few sites which are very busy with jobs. Defaults to False. ")
-
-(options, args ) = parser.parse_args()
-
-now = datetime.datetime.now()
-isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
-options.isodatetime = isodatetime
-
-# Write everything into a log file in the directory you are submitting from.
-log = logging.getLogger( 'music_crab' )
-
-formatter = logging.Formatter( format )
-log_file_name = 'music_crab_' + options.isodatetime + '.log'
-hdlr = logging.FileHandler( log_file_name, mode='w' )
-hdlr.setFormatter( formatter )
-log.addHandler( hdlr )
-
-#setup logging
-format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
-logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )   
-
-
-# define some module-wide switches
-runOnMC = False
-runOnData = False
-runOnGen = False
-
-
-#get current user HNname
-if options.user:
-    user = options.user
-else:
-    user = os.getenv( 'LOGNAME' )
-
-if options.blacklist:
-    options.blacklist = 'T0,T1,'+options.blacklist
-else:
-    options.blacklist = 'T0,T1'
 
 def main():
 
@@ -143,25 +47,29 @@ def main():
         sys.exit(1)
     #~ print SampleFileInfoDict
     
-    # Check if the current commit is tagged or tag it otherwise
-    #~ if not options.no_tag:
-        #~ try:
-            #~ gitTag = createTag( options, skimmer_dir )
-        #~ except Exception, e:
-            #~ log.error( e )
-            #~ sys.exit( 3 )
+    #~ # Check if the current commit is tagged or tag it otherwise
+    if not options.no_tag:
+        try:
+            gitTag = createTag( options, skimmer_dir )
+        except Exception, e:
+            log.error( e )
+            sys.exit( 3 )
     
-    # first check if user has permission to write to selected site
-    #~ if not crab_checkwrite("T2_DE_RWTH"):
-        #~ log.error( "music_crab3 stopped due to site permission error on site: %s"%site )
-        #~ sys.exit(1)
-    #~ log.info("after tag")
-        
+    #~ # first check if user has permission to write to selected site
+    if not crab_checkwrite("T2_DE_RWTH"):
+        log.error( "music_crab3 stopped due to site permission error on site: %s"%site )
+        sys.exit(1)
+    log.info("after tag")
+    
+    
     for key in SampleDict.keys():
-        writeSampleConfig(SampleFileInfoDict,SampleDict[key])
-        #~ crab_submit(key)
+        CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key])
+        log.info("Created crab config object")
+        writeCrabConfig(key,CrabConfig)
+        crab_submit(key)
+        log.info("crab sumbit called for task %s"%key) 
     
-def writeSampleConfig(SampleFileInfoDict, sampleinfo):
+def createCrabConfig(SampleFileInfoDict, sampleinfo):
     global runOnMC 
     global runOnData
     global runOnGen 
@@ -184,7 +92,9 @@ def writeSampleConfig(SampleFileInfoDict, sampleinfo):
     ### JobType section
     config.add_section('JobType')
     config.set( 'JobType', 'pluginName', 'Analysis' )
-    config.set( 'JobType', 'psetName', SampleFileInfoDict['pset'] )
+    #~ config.set( 'JobType', 'psetName', SampleFileInfoDict['pset'] )
+    preloadProcess(name,sample,SampleFileInfoDict)
+    config.set( 'JobType', 'psetName', name+'_cfg.py' )
     if options.failureLimit:
         try:
             config.set( 'JobType', 'failureLimit', "%.2f"%float(options.failureLimit) )
@@ -195,7 +105,9 @@ def writeSampleConfig(SampleFileInfoDict, sampleinfo):
     if options.inputFiles:
         config.set( 'JobType', 'inputFiles', options.inputFiles ) 
     if options.outputFiles:
-        config.set( 'JobType', 'outputFiles', options.outputFiles ) 
+        config.set( 'JobType', 'outputFiles', options.outputFiles )
+    else:
+        config.set( 'JobType', 'outputFiles', [name+".pxlio"]  )
     if options.allowNonProductionCMSSW:
         config.set( 'JobType', 'allowNonProductionCMSSW', 'True' ) 
     if options.maxmemory:
@@ -235,7 +147,7 @@ def writeSampleConfig(SampleFileInfoDict, sampleinfo):
         config.set( 'Data', 'splitting', 'FileBased' )
         DatasetSummary = getDatasetSummary(sample)
         try:
-            print DatasetSummary
+            #~ print DatasetSummary
             filesPerJob =  int((float(options.eventsPerJob) * int(DatasetSummary['numFiles'])) /  int(DatasetSummary['numEvents']) )
             if filesPerJob < 1:
                 filesPerJob = 1
@@ -261,23 +173,60 @@ def writeSampleConfig(SampleFileInfoDict, sampleinfo):
     config.add_section('Site')
     config.set( 'Site', 'storageSite', 'T2_DE_RWTH' )
     
-    if options.blacklist:
-        config.set( 'Site', 'blacklist', options.blacklist )
     
+    if options.blacklist:
+        blacklists = options.blacklist.split(',')
+        config.set( 'Site', 'blacklist', blacklists )
+    
+    
+    ### User section
+    config.add_section('User')
+    config.set( 'User', 'voGroup', 'dcms' )
+      
+    return config
+
+def preloadProcess(name,sample,SampleFileInfoDict):
+    pset = SampleFileInfoDict['pset'] 
+    file = open( pset )
+    cfo = imp.load_source("pycfg", pset, file )
+    del file
+    process = cfo.process
+    del cfo
+
+    process.Skimmer.FileName = name+'.pxlio'
+    process.Skimmer.Process = name
+    process.Skimmer.Dataset = sample
+
+    pset_file = open( name+'_cfg.py', 'w' )
+    pset_file.write( "import FWCore.ParameterSet.Config as cms\n" )
+    pset_file.write( "import pickle\n" )
+    pset_file.write( "pickledCfg=\"\"\"%s\"\"\"\n" % pickle.dumps( process ) )
+    pset_file.write("process = pickle.loads(pickledCfg)\n")
+    pset_file.close()
+
+def writeCrabConfig(name,config):
     if options.workingArea:
         runPath = options.workingArea
         if not runPath.strip()[-1] == "/":
             runPath+="/"
     else:
         runPath ="./"
-        
-    filename = '%s/crab_%s_cfg.py'%(runPath,name)
-    print "created crab config file %s"%filename
-    config.writeCrabConfig(filename)
-    log.info( 'created crab config file %s'%filename )
+        filename = '%s/crab_%s_cfg.py'%(runPath,name)
+        try:
+            config.writeCrabConfig(filename)
+            log.info( 'created crab config file %s'%filename )
+        except:
+            log.error("Could not create crab config file")
     
-def crab_checkwrite(site):    
-    cmd = ['crab checkwrite --site %s'%site ]
+
+def getRunRange():
+    return 'dummy'
+
+def crab_checkwrite(site,path='noPath'):    
+    log.info("Checking if user can write in output storage")
+    cmd = ['crab checkwrite --site %s --voGroup=dcms'%site ]
+    if not 'noPath' in path:
+        cmd[0] +=' --lfn=%s'%(path)
     if options.workingArea:
         runPath = options.workingArea
     else:
@@ -291,15 +240,31 @@ def crab_checkwrite(site):
         return True
         
 def crab_submit(name):
-    cmd = 'crab submit %s_cfg.py'%name
-    if options.dry-run:
-        log.info( 'Dry-run: Created config file. crab command would have been: ', cmd )
+    cmd = 'crab submit crab_%s_cfg.py'%name
+    if options.workingArea:
+        runPath = options.workingArea
+    else:
+        runPath ="./"
+    if options.dry_run:
+        log.info( 'Dry-run: Created config file. crab command would have been: %s'%cmd )
     else:
         p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=r"%s"%runPath,shell=True)
         (stringlist,string_err) = p.communicate()
 
-def getRunRange():
-    return 'dummy'
+def crab_checkHNname():
+    cmd = 'crab checkHNname --voGroup=dcms'
+    if options.workingArea:
+        runPath = options.workingArea
+    else:
+        runPath ="./"
+    p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=r"%s"%runPath,shell=True)
+    (string_out,string_err) = p.communicate()
+    string_out = string_out.split("\n")
+    for line in string_out:
+        if "Your CMS HyperNews username is" in line:
+            hnname = line.split(":")[1].strip()
+            return hnname
+    return "noHNname"
 
 def readSampleFile(filename):
     global runOnMC 
@@ -534,6 +499,102 @@ def createTag( options, skimmer_dir ):
         log.info( "Using Skimmer version tagged with '%s'." % tag )
 
     return tag
+
+## parse user input
+parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
+parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
+parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/configs]' )
+parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
+parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
+                   help='Only submit samples matching PATTERNS (bash-like ' \
+                        'patterns only, comma separated values. ' \
+                        'E.g. --only QCD* ). [default: %default]' )
+parser.add_option( '-S', '--submit', action='store_true', default=False,
+                   help='Force the submission of jobs, even if a CRAB task with the given process name already exists. [default: %default]' )
+parser.add_option( '-d', '--dbsUrl', metavar='DBSURL',default='global', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
+parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB or registering samples to the database.' )
+parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choices,
+                   help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
+parser.add_option( '--no-tag', action='store_true', default=False,
+                   help="Do not create a tag in the skimmer repository. [default: %default]" )
+parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1 separated by comma, e.g. T2_DE_RWTH,T2_US_Purdue  ' )
+##              
+# new options since crab3
+##
+#new  options for General section
+parser.add_option( '--workingArea',metavar='DIR',default=None,help='The area (full or relative path) where to create the CRAB project directory. ' 
+                         'If the area doesn\'t exist, CRAB will try to create it using the mkdir command' \
+                         ' (without -p option). Defaults to the current working directory.'       )  
+parser.add_option( '-t', '--transferOutput', action='store_true',default=True,help="Whether to transfer the output to the storage site"
+                                                'or leave it at the runtime site. (Not transferring the output might'\
+                                                ' be useful for example to avoid filling up the storage area with'\
+                                                ' useless files when the user is just doing some test.) ' )  
+parser.add_option( '--log', action='store_true',default=False,help='Whether or not to copy the cmsRun stdout /'\
+                                                'stderr to the storage site. If set to False, the last 1 MB'\
+                                                ' of each job are still available through the monitoring in '\
+                                                'the job logs files and the full logs can be retrieved from the runtime site with') 
+parser.add_option( '--failureLimit', help='The number of jobs that may fail permanently before the entire task is cancelled. '\
+                                            'Defaults to 10% of the jobs in the task. ')
+# new feature alternative username
+parser.add_option( '-u','--user', help='Alternative username if local user name is not equal to HN-username [default is local name]')
+                                    
+# new options for JobType       
+parser.add_option('--pyCfgParams',default =None, help="List of parameters to pass to the CMSSW parameter-set configuration file, as explained here. For example, if set to "\
+"[\'myOption\',\'param1=value1\',\'param2=value2\'], then the jobs will execute cmsRun JobType.psetName myOption param1=value1 param2=value2. ")
+parser.add_option('--inputFiles',help='List of private input files needed by the jobs. ')
+parser.add_option('--outputFiles',help='List of output files that need to be collected, besides those already specified in the output'\
+                                            ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
+parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ') 
+parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
+parser.add_option('--maxjobruntime', default=72,help="Overwrite the maxjobruntime if present in samplefile [default: 72]" ) 
+parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" ) 
+parser.add_option('--priority', help='Task priority among the user\'s own tasks. Higher priority tasks will be processed before lower priority.'\
+                                                ' Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a'\
+                                                ' task are given a priority boost of 10. [default  10] ' ) 
+parser.add_option('-n','--name',help="Music Process name [default: /Music/{current_date}/]")
+parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: False]")
+
+#new options for Data
+parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: 10.000]")
+parser.add_option('--ignoreLocality',action='store_true',default=False,help="Set to True to allow jobs to run at any site,"
+                                                    "regardless of whether the dataset is located at that site or not. "\
+                                                    "Remote file access is done using Xrootd. The parameters Site.whitelist"\
+                                                    " and Site.blacklist are still respected. This parameter is useful to allow "\
+                                                    "jobs to run on other sites when for example a dataset is available on only one"\
+                                                    " or a few sites which are very busy with jobs. Defaults to False. ")
+
+(options, args ) = parser.parse_args()
+
+now = datetime.datetime.now()
+isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
+options.isodatetime = isodatetime
+
+# Write everything into a log file in the directory you are submitting from.
+log = logging.getLogger( 'music_crab' )
+
+formatter = logging.Formatter( format )
+log_file_name = 'music_crab_' + options.isodatetime + '.log'
+hdlr = logging.FileHandler( log_file_name, mode='w' )
+hdlr.setFormatter( formatter )
+log.addHandler( hdlr )
+
+#setup logging
+format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
+logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )   
+
+
+# define some module-wide switches
+runOnMC = False
+runOnData = False
+runOnGen = False
+
+
+#get current user HNname
+if options.user:
+    user = options.user
+else:
+    #~ user = os.getenv( 'LOGNAME' )
+    user = crab_checkHNname()
 
 if __name__ == '__main__':
   main()
