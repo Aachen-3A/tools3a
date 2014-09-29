@@ -22,6 +22,7 @@ import glob
 import subprocess
 import imp
 import pickle
+import fnmatch
 # some general definitions
 COMMENT_CHAR = '#'
 log_choices = [ 'ERROR', 'WARNING', 'INFO', 'DEBUG' ]
@@ -33,22 +34,20 @@ config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimmin
 
 # Parse user input    
 from crabConfigParser import CrabConfigParser
-
+import FWCore.ParameterSet.Config as cms
 
 def main():
-
     
+
     if(len(args))> 0:
         SampleFileInfoDict = readSampleFile( args[0] )
         SampleDict =  SampleFileInfoDict['sampledict']
     else:
-        #~ print "no config file specified"
         log.error("no config file specified.")
         sys.exit(1)
-    #~ print SampleFileInfoDict
     
     #~ # Check if the current commit is tagged or tag it otherwise
-    if not options.no_tag:
+    if not options.noTag:
         try:
             gitTag = createTag( options, skimmer_dir )
         except Exception, e:
@@ -68,6 +67,7 @@ def main():
         writeCrabConfig(key,CrabConfig)
         crab_submit(key)
         log.info("crab sumbit called for task %s"%key) 
+    log.info("using global tag: %s" % testGetGlobalTag(SampleFileInfoDict))
     
 def createCrabConfig(SampleFileInfoDict, sampleinfo):
     global runOnMC 
@@ -92,16 +92,21 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo):
     ### JobType section
     config.add_section('JobType')
     config.set( 'JobType', 'pluginName', 'Analysis' )
-    #~ config.set( 'JobType', 'psetName', SampleFileInfoDict['pset'] )
-    preloadProcess(name,sample,SampleFileInfoDict)
+    config.set( 'JobType', 'psetName', SampleFileInfoDict['pset'] )
+    #~ preloadProcess(name,sample,SampleFileInfoDict)
     config.set( 'JobType', 'psetName', name+'_cfg.py' )
     if options.failureLimit:
         try:
             config.set( 'JobType', 'failureLimit', "%.2f"%float(options.failureLimit) )
         except:
             log.error('No failureLimit set. failureLimit needs float')
+    # add name, datasetpath, globalTag (optional) and custom Params (optional)
+    paramlist = ['-n',name,'-p',sample]
+    if options.globalTag:
+        paramlist.extend(['-g',options.globalTag])
     if options.pyCfgParams:
-       config.set( 'JobType', 'pyCfgParams', options.pyCfgParams )   
+        paramlist.append(options.pyCfgParams)
+    config.set( 'JobType', 'pyCfgParams', paramlist )   
     if options.inputFiles:
         config.set( 'JobType', 'inputFiles', options.inputFiles ) 
     if options.outputFiles:
@@ -404,6 +409,31 @@ def getDatasetSummary( dataset ):
     datasetSummary.update({"totalFileSize":sum( [ block['file_size'] for block in datasetBlocks ] ) })
     return datasetSummary
 
+
+def testGetGlobalTag(SampleFileInfoDict):
+    pset = SampleFileInfoDict['pset'] 
+    with open(pset,"rb" ) as psetfile:
+        cfo = imp.load_source("pycfg", pset, psetfile )
+        globalTag = cfo.getGlobalTag()
+        del cfo
+        return globalTag
+
+def submitSample2db(name,sample,SampleFileInfoDict):
+    
+    datasetInfos[ 'original_name' ] = sample
+    datasetInfos[ 'energy' ] = SampleFileInfoDict['energy']
+    datasetInfos[ 'iscreated' ] = 1
+    datasetInfos[ 'skimmer_name' ] = 'MUSiCSkimmer'
+    datasetInfos[ 'skimmer_cmssw' ] = os.getenv( 'CMSSW_VERSION' )
+    datasetInfos[ 'skimmer_globaltag' ] = str( process.GlobalTag.globaltag ).split( "'" )[1]
+    if options.no_tag:
+        datasetInfos[ 'skimmer_version' ] = 'Not tagged'
+    else:
+        datasetInfos[ 'skimmer_version' ] = gitTag
+        
+    
+
+
 def createTag( options, skimmer_dir ):
     # Save the current working directory to get back here later.
     workdir = os.getcwd()
@@ -515,13 +545,18 @@ parser.add_option( '-d', '--dbsUrl', metavar='DBSURL',default='global', help='Se
 parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB or registering samples to the database.' )
 parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choices,
                    help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
-parser.add_option( '--no-tag', action='store_true', default=False,
+parser.add_option( '--noTag', action='store_true', default=False,
+#~ parser.add_option( '--no-tag', action='store_true', default=False,
                    help="Do not create a tag in the skimmer repository. [default: %default]" )
 parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1 separated by comma, e.g. T2_DE_RWTH,T2_US_Purdue  ' )
 ##              
 # new options since crab3
-##
-#new  options for General section
+#
+#new general options for music_crab3
+# new feature alternative username
+parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
+parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
+#new  options for General section in pset
 parser.add_option( '--workingArea',metavar='DIR',default=None,help='The area (full or relative path) where to create the CRAB project directory. ' 
                          'If the area doesn\'t exist, CRAB will try to create it using the mkdir command' \
                          ' (without -p option). Defaults to the current working directory.'       )  
@@ -535,10 +570,9 @@ parser.add_option( '--log', action='store_true',default=False,help='Whether or n
                                                 'the job logs files and the full logs can be retrieved from the runtime site with') 
 parser.add_option( '--failureLimit', help='The number of jobs that may fail permanently before the entire task is cancelled. '\
                                             'Defaults to 10% of the jobs in the task. ')
-# new feature alternative username
-parser.add_option( '-u','--user', help='Alternative username if local user name is not equal to HN-username [default is local name]')
+
                                     
-# new options for JobType       
+# new options for JobType       in pset
 parser.add_option('--pyCfgParams',default =None, help="List of parameters to pass to the CMSSW parameter-set configuration file, as explained here. For example, if set to "\
 "[\'myOption\',\'param1=value1\',\'param2=value2\'], then the jobs will execute cmsRun JobType.psetName myOption param1=value1 param2=value2. ")
 parser.add_option('--inputFiles',help='List of private input files needed by the jobs. ')
@@ -554,7 +588,7 @@ parser.add_option('--priority', help='Task priority among the user\'s own tasks.
 parser.add_option('-n','--name',help="Music Process name [default: /Music/{current_date}/]")
 parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: False]")
 
-#new options for Data
+#new options for Data in pset
 parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: 10.000]")
 parser.add_option('--ignoreLocality',action='store_true',default=False,help="Set to True to allow jobs to run at any site,"
                                                     "regardless of whether the dataset is located at that site or not. "\
@@ -572,15 +606,19 @@ options.isodatetime = isodatetime
 # Write everything into a log file in the directory you are submitting from.
 log = logging.getLogger( 'music_crab' )
 
+
+#setup logging
+format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
+logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )   
+
+
 formatter = logging.Formatter( format )
 log_file_name = 'music_crab_' + options.isodatetime + '.log'
 hdlr = logging.FileHandler( log_file_name, mode='w' )
 hdlr.setFormatter( formatter )
 log.addHandler( hdlr )
 
-#setup logging
-format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
-logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )   
+
 
 
 # define some module-wide switches
