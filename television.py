@@ -165,7 +165,7 @@ class Overview:
             try:
                 x.addText("Status information",pp.pformat(self.tasks[self.currentTask].jobs[self.currentJob].infos))
             except:
-                x.setText("Status information", "No information available")
+                x.addText("Status information", "No information available")
             if self.tasks[self.currentTask].jobs[self.currentJob].frontEndStatus=="RETRIEVED":
                 try:
                     x.addFile("stdout",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"out.txt"))
