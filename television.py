@@ -17,15 +17,20 @@ import pprint
 import logging
 
 def addtime(tfor,tsince,tto):
-   if tsince==None:
-      return tfor
-   deltat=tto-tsince
-   if tfor==None:
-      tfor=deltat
-   else:
-      tfor=tfor+deltat
-   return tfor
+    """Add two time intervals
+    tfor to tto-tsince
+    """
+    if tsince==None:
+        return tfor
+    deltat=tto-tsince
+    if tfor==None:
+        tfor=deltat
+    else:
+        tfor=tfor+deltat
+    return tfor
 def timerepr(deltat):
+    """Return formatted time interval
+    """
     if deltat.days<0:
         return "now"
     hours, seconds=divmod(deltat.seconds, 60*60)
@@ -36,8 +41,9 @@ def timerepr(deltat):
     return "in {0}s".format(seconds)
 
 def checkTask(task, resubmitJobs):
-    #task=parameters[0]
-    #resubmitJobs=parameter[1]
+    """perform actions on a task
+    resubmit jobs, get status, get output and get status again
+    """
     task.resubmit(resubmitJobs)
     status = task.getStatus()
     task.getOutput()
@@ -45,14 +51,9 @@ def checkTask(task, resubmitJobs):
     return task
 
 
-
-def changePad(currentpad, overview, taskOverviews, direction):
-    if currentpad==overview and direction=="down":
-        currentpad=taskOverviews[currentpad.cursor]
-    elif currentpad in taskOverviews and direction=="up":
-        currentpad=overview
-
 def resubmit(taskList, resubmitList, status, overview):
+    """add jobs with a certain status to the resubmit list
+    """
     if overview.level==0:
         myTaskIds, myTaskList=range(len(taskList)), taskList
     elif overview.level==1:
@@ -65,6 +66,10 @@ def resubmit(taskList, resubmitList, status, overview):
                 resubmitList[t].add(j)
 
 class Overview:
+    """This class incorporates the 'graphical' overviews of tasks, jobs and jobinfo.
+    Tasks and jobs overviews are stored persistantly in order to be aware of the selected task/job.
+    Jobinfo is created on the fly.
+    """
     def __init__(self, stdscr, tasks, resubmitList):
         self.level = 0
         self.taskId = 0
@@ -132,16 +137,6 @@ class Overview:
                     printmode=curses.A_BOLD
                 taskOverview.addRow(cells, printmode)
         self._refresh()
-    #@property
-    #def currentView(self):
-        #if self.level==0:
-            #return self.overview
-        #elif self.level==1:
-            #return self.taskOverview[self.currentTask]
-        #else:
-            #x=curseshelpers.Text(top=10)
-            #x.setText("Blub")
-            #return x
     @property
     def currentTask(self):
         return self.overview.cursor
@@ -165,7 +160,7 @@ class Overview:
             try:
                 x.addText("Status information",pp.pformat(self.tasks[self.currentTask].jobs[self.currentJob].infos))
             except:
-                x.setText("Status information", "No information available")
+                x.addText("Status information", "No information available")
             if self.tasks[self.currentTask].jobs[self.currentJob].frontEndStatus=="RETRIEVED":
                 try:
                     x.addFile("stdout",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"out.txt"))
@@ -180,87 +175,97 @@ class Overview:
         self.currentView.refresh()
         
 def main(stdscr, options, args, passphrase):
+    # Logging
     #logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s",level=logging.DEBUG)
     logging.basicConfig(format="%(asctime)s %(name)s %(process)d %(levelname)s %(message)s",level=logging._levelNames[options.debug.upper()])
-    
     logger = logging.getLogger(__name__)
-    
+
+    # curses color pairs 
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_BLACK)
     curses.init_pair(5, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
-    taskList,resubmitList=[], []
+    taskList,resubmitList = [], []
+    # load tasks from directories
     for directory in args:
         task = cesubmit.Task.load(directory)
         taskList.append(task)
         resubmitList.append(set())
-    #stdscr = curses.initscr()
     curses.noecho()
     stdscr.keypad(1)
-
     updateInterval=60
     lastUpdate=datetime.datetime.now()
-
-    #stdscr.addstr(0, 0, "cejobmonitor"+30*" ", curses.A_REVERSE)
+    
+    # paint top rows
     stdscr.addstr(0, 0, ("{0:^"+str(stdscr.getmaxyx()[1])+"}").format("television"), curses.A_REVERSE)
-    stdscr.addstr(1, 0, "Exit: q  Raise/lower update interval: +/- ("+str(updateInterval)+")  Update:  <SPACE>")
+    stdscr.addstr(1, 0, "Exit (q)  Raise/lower update interval (+)/(-) ("+str(updateInterval)+")  More information (return)  Update (SPACE)     ")
     stdscr.timeout(1000)
     curses.curs_set(0)
     stdscr.refresh()
+    # get validity of the certificate
     certtime=datetime.datetime.now()+datetime.timedelta(seconds=cesubmit.timeLeftVomsProxy())
+    # waitingForUpdate stores the current task when its updated. waitingForExit is needed to wait for all jobs to finish before exiting
     waitingForUpdate, waitingForExit = None, False
-    overview=Overview(stdscr, taskList, resubmitList)
-    #markForResubmission=[]
-    pool=None
+
+    overview = Overview(stdscr, taskList, resubmitList)
+    # this is the pool for the update task.
+    pool = None
     nextTaskId=0
     while True:
-        stdscr.addstr(1, 0, "Exit: q  Raise/lower update interval: +/- ("+str(updateInterval)+")  Update:  <SPACE>     ")
-        stdscr.addstr(2, 0, "Resubmit   (1): ABORTED,  (2): DONE-FAILED,  (3): (REALLY-)RUNNING,  (4): None")
+        # main loop
+        stdscr.addstr(1, 0, "Exit (q)  Raise/lower update interval (+)/(-) ("+str(updateInterval)+")  More information (return)  Update (SPACE)     ")
+        stdscr.addstr(2, 0, "Resubmit job (r)   By Status:  ABORTED (1), DONE-FAILED (2), (REALLY-)RUNNING (3), None (4)")
         stdscr.addstr(3, 0, "Next update {0}       ".format(timerepr(lastUpdate+datetime.timedelta(seconds=updateInterval)-datetime.datetime.now())))
         stdscr.addstr(4, 0, "Certificate expires {0}       ".format(timerepr(certtime-datetime.datetime.now())))
         stdscr.addstr(5, 0, "Next Task to update: " + taskList[nextTaskId].name)
         if waitingForExit:
             stdscr.addstr(6,0,"Exiting... Waiting for status retrieval to finish...")
         stdscr.refresh()
+        # refresh overview (the task/job table or the jobinfo text)
         overview.currentView.refresh()
-        #stdscr.move(30,0)
-        i=0
+        
         if lastUpdate+datetime.timedelta(seconds=updateInterval)<datetime.datetime.now() or waitingForUpdate is not None:
-            #stdscr.clrtobot()
+            # should an update be performed or is ongoing?
             if waitingForUpdate is not None:
+                # update ongoing
                 if not pool._cache:
-                    #pool.join()
                     if result.successful():
+                        # rewrite the task into the tasklist, this is necessary as the multiprocessing pickles the object
                         taskList[waitingForUpdate] = result.get()
                         overview.update(taskList,resubmitList)
                     lastUpdate = datetime.datetime.now()
                     waitingForUpdate = None
             else:
+                # no update ongoing, then start a new task to update
                 if passphrase:
                     cesubmit.checkAndRenewVomsProxy(648000, passphrase=passphrase)
                     certtime=datetime.timedelta(seconds=cesubmit.timeLeftVomsProxy())+datetime.datetime.now()
-                if False:  #set to true for serious debugging
+                if False:  #set to true for serious debugging, this disables the multiprocessing
                     for task in taskList:
                         checkTask(task)
                     overview.update(taskList, resubmitList)
                     lastUpdate = datetime.datetime.now()
                 else:
-                    #prepare parameters
+                    # prepare parameters
                     parameters = [taskList[nextTaskId], resubmitList[nextTaskId]]
-                    #use one process only, multiprocessing is handled within this process
+                    # use one process only, actual multiprocessing is handled within this process (multiple jobs per tasks are retrieved)
                     pool = multiprocessing.Pool(1)
                     result = pool.apply_async(checkTask, parameters)
                     pool.close()
+                    # reset resubmit list for this task
                     resubmitList[nextTaskId]=set()
                     waitingForUpdate = nextTaskId
                     nextTaskId = (nextTaskId+1) % len(taskList)
+                    
+        # user key press processing
         c = stdscr.getch()
         if c == ord('+'):
             updateInterval+=30
         elif c == ord('-'):
             updateInterval=max(30,updateInterval-30)
         elif c == ord('q') or c == 27 or c == curses.KEY_BACKSPACE:
+            # q escape or backspace
             if overview.level:
                 overview.up()
             else:
@@ -295,17 +300,10 @@ def main(stdscr, options, args, passphrase):
         elif c==ord('r') and overview.level==1:
             resubmitList[overview.currentTask].add(overview.currentJob)
             overview.update(taskList, resubmitList)
-        elif c == ord('t'):
-            #print "blub"
-            #logger.warning("test")
-            #curseshelpers.test()
-            taskList[0].cleanUp()
-            #raise Exception("blub")
         elif c == 10:   #enter key
             overview.down()
         else:
             pass
-            #stdscr.addstr(8,0,str(c))
         if waitingForExit and waitingForUpdate is None:
             break
     curses.nocbreak(); stdscr.keypad(0); curses.echo()
@@ -325,11 +323,10 @@ if __name__ == "__main__":
             for job in task.jobs:
                 pp.pprint(job.__dict__)
     else:
-        #cesubmit.checkAndRenewVomsProxy(345600)
         if options.proxy:
             passphrase=None
         else:
-            print "You may enter your grid password here. Do not enter anything to use the available proxy. Program will terminate when proxy expires"
+            print "You may enter your grid password here. Do not enter anything to use the available proxy."
             passphrase = getpass.getpass()
             if passphrase=="":
                 passphrase = None
