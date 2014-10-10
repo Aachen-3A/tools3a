@@ -23,6 +23,7 @@ import subprocess
 import imp
 import pickle
 import fnmatch
+
 # some general definitions
 COMMENT_CHAR = '#'
 log_choices = [ 'ERROR', 'WARNING', 'INFO', 'DEBUG' ]
@@ -32,47 +33,110 @@ skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject' )
 lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
 config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
 
-# Parse user input    
-from crabConfigParser import CrabConfigParser
+
+
+# Write everything into a log file in the directory you are submitting from.
+log = logging.getLogger( 'music_crab' )
+
+# define some module-wide switches
+runOnMC = False
+runOnData = False
+runOnGen = False
+
+
 import FWCore.ParameterSet.Config as cms
 
 def main():
+    # Parse user input from command line
+    (options, args ) = commandline_parsing()
+    # Setup logging for music_crab
+    setupLogging(options)
     
 
+    
+    # Read additional information from music_crab config file
     if(len(args))> 0:
-        SampleFileInfoDict = readSampleFile( args[0] )
+        #get SampleFile from command line argument
+        sampleFileName = args[0]
+        SampleFileInfoDict = readSampleFile( sampleFileName ,options)
         SampleDict =  SampleFileInfoDict['sampledict']
+        SampleFileInfoDict['sampleFileName'] = sampleFileName
     else:
         log.error("no config file specified.")
         sys.exit(1)
     
-    #~ # Check if the current commit is tagged or tag it otherwise
+    # Check if the current commit is tagged or tag it otherwise
     if not options.noTag:
         try:
             gitTag = createTag( options, skimmer_dir )
+            SampleFileInfoDict.update({'gitTag':gitTag})
         except Exception, e:
             log.error( e )
             sys.exit( 3 )
-    
-    #~ # first check if user has permission to write to selected site
-    if not crab_checkwrite("T2_DE_RWTH"):
-        log.error( "music_crab3 stopped due to site permission error on site: %s"%site )
-        sys.exit(1)
     log.info("after tag")
     
     
-    for key in SampleDict.keys():
-        CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key])
-        log.info("Created crab config object")
-        writeCrabConfig(key,CrabConfig)
-        crab_submit(key)
-        log.info("crab sumbit called for task %s"%key) 
-    log.info("using global tag: %s" % testGetGlobalTag(SampleFileInfoDict))
+    # first check if user has permission to write to selected site
+    if not crab_checkwrite("T2_DE_RWTH",options):sys.exit(1)
     
-def createCrabConfig(SampleFileInfoDict, sampleinfo):
+    
+    
+    # extract the global tag for the used config file
+    #~ globalTag = log.info("using global tag: %s" % getGlobalTag(SampleFileInfoDict))
+    globalTag =  getGlobalTag(options)
+    log.info("using global tag: %s" % globalTag)
+    SampleFileInfoDict.update({'globalTag':globalTag})
+    # create crab config files and submit tasks
+    for key in SampleDict.keys():
+        CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
+        log.info("Created crab config object")
+        writeCrabConfig(key,CrabConfig,options)
+        crab_submit(key,options)
+        if options.db and not options.dry_run:
+            submitSample2db(key, SampleDict[key][1],SampleFileInfoDict)
+        else:
+            log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
+    
+def timeLeftVomsProxy():
+    """Returns True if the proxy is valid longer than time, False otherwise."""
+    proc = subprocess.Popen( ['voms-proxy-info', '-timeleft' ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
+    output = proc.communicate()[0]
+    if proc.returncode != 0:
+        return False
+    else:
+        return int( output )
+
+def checkVomsProxy( time=86400 ):
+    """Returns True if the proxy is valid longer than time, False otherwise."""
+    timeleft = timeLeftVomsProxy()
+    return timeleft > time
+
+def renewVomsProxy( voms='cms:/cms/dcms', passphrase=None ):
+    """Make a new proxy with a lifetime of one week."""
+    if passphrase:
+        p = subprocess.Popen(['voms-proxy-init', '--voms', voms, '--valid', '192:00'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout = p.communicate(input=passphrase+'\n')[0]
+        retcode = p.returncode
+        if not retcode == 0:
+            raise ProxyError( 'Proxy initialization command failed: %s'%stdout )
+    else:
+        retcode = subprocess.call( ['voms-proxy-init', '--voms', voms, '--valid', '192:00'] )
+    if not retcode == 0:
+        raise ProxyError( 'Proxy initialization command failed.')
+
+def checkAndRenewVomsProxy( time=604800, voms='cms:/cms/dcms', passphrase=None ):
+    """Check if the proxy is valid longer than time and renew if needed."""
+    if not checkVomsProxy( time ):
+        renewVomsProxy(passphrase=passphrase)
+        if not checkVomsProxy( time ):
+            raise ProxyError( 'Proxy still not valid long enough!' )
+                
+def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     global runOnMC 
     global runOnData
     global runOnGen 
+    # Parse user input    
+    from crabConfigParser import CrabConfigParser
     config = CrabConfigParser()
     if runOnData:
         (name,sample,lumi_mask,lumisPerJob) = sampleinfo
@@ -93,17 +157,19 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo):
     config.add_section('JobType')
     config.set( 'JobType', 'pluginName', 'Analysis' )
     config.set( 'JobType', 'psetName', SampleFileInfoDict['pset'] )
+    # next two lines use old (pickle way)
     #~ preloadProcess(name,sample,SampleFileInfoDict)
-    config.set( 'JobType', 'psetName', name+'_cfg.py' )
+    #~ config.set( 'JobType', 'psetName', name+'_cfg.py' )
     if options.failureLimit:
         try:
             config.set( 'JobType', 'failureLimit', "%.2f"%float(options.failureLimit) )
         except:
             log.error('No failureLimit set. failureLimit needs float')
     # add name, datasetpath, globalTag (optional) and custom Params (optional)
-    paramlist = ['-n',name,'-p',sample]
-    if options.globalTag:
-        paramlist.extend(['-g',options.globalTag])
+    paramlist = ['--psname=',name,'--psdatasetpath=',sample]
+    #~ if options.globalTag:
+        #~ paramlist.extend(['--psglobalTag',options.globalTag])
+    paramlist.extend(['--psglobalTag=',SampleFileInfoDict['globalTag']])
     if options.pyCfgParams:
         paramlist.append(options.pyCfgParams)
     config.set( 'JobType', 'pyCfgParams', paramlist )   
@@ -162,7 +228,7 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo):
         config.set( 'Data', 'splitting', 'FileBased' )
         config.set( 'Data', 'unitsPerJob', '%d'%filesPerJob)
     
-    config.set( 'Data', 'outlfn', "/store/user/%s/MUSiC/%s/%s/"%(user,datetime.date.today().isoformat(),name))
+    config.set( 'Data', 'outlfn', "/store/user/%s/MUSiC/%s/%s/"%(options.user,datetime.date.today().isoformat(),name))
     
     ## set default for now, will change later
     config.set( 'Data', 'publishDataName', 'dummy' )
@@ -209,7 +275,7 @@ def preloadProcess(name,sample,SampleFileInfoDict):
     pset_file.write("process = pickle.loads(pickledCfg)\n")
     pset_file.close()
 
-def writeCrabConfig(name,config):
+def writeCrabConfig(name,config,options):
     if options.workingArea:
         runPath = options.workingArea
         if not runPath.strip()[-1] == "/":
@@ -227,7 +293,7 @@ def writeCrabConfig(name,config):
 def getRunRange():
     return 'dummy'
 
-def crab_checkwrite(site,path='noPath'):    
+def crab_checkwrite(site,options,path='noPath'):    
     log.info("Checking if user can write in output storage")
     cmd = ['crab checkwrite --site %s --voGroup=dcms'%site ]
     if not 'noPath' in path:
@@ -240,11 +306,13 @@ def crab_checkwrite(site,path='noPath'):
     (stringlist,string_err) = p.communicate()
     if len(string_err) > 0:
         log.error( "The crab checkwrite command failed for site: %s"%site )
+        log.error(string_err)
         return False
     else:
+        log.info("Checkwrite was sucessfully called.")
         return True
         
-def crab_submit(name):
+def crab_submit(name,options):
     cmd = 'crab submit crab_%s_cfg.py'%name
     if options.workingArea:
         runPath = options.workingArea
@@ -253,10 +321,11 @@ def crab_submit(name):
     if options.dry_run:
         log.info( 'Dry-run: Created config file. crab command would have been: %s'%cmd )
     else:
-        p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=r"%s"%runPath,shell=True)
+        p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,stdin=subprocess.PIPE,cwd=r"%s"%runPath,shell=True)
         (stringlist,string_err) = p.communicate()
+        log.info("crab sumbit called for task %s"%name) 
 
-def crab_checkHNname():
+def crab_checkHNname(options):
     cmd = 'crab checkHNname --voGroup=dcms'
     if options.workingArea:
         runPath = options.workingArea
@@ -271,7 +340,41 @@ def crab_checkHNname():
             return hnname
     return "noHNname"
 
-def readSampleFile(filename):
+def timeLeftVomsProxy():
+    """Returns True if the proxy is valid longer than time, False otherwise."""
+    proc = subprocess.Popen( ['voms-proxy-info', '-timeleft' ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
+    output = proc.communicate()[0]
+    if proc.returncode != 0:
+        return False
+    else:
+        return int( output )
+
+def checkVomsProxy( time=86400 ):
+    """Returns True if the proxy is valid longer than time, False otherwise."""
+    timeleft = timeLeftVomsProxy()
+    return timeleft > time
+
+def renewVomsProxy( voms='cms:/cms/dcms', passphrase=None ):
+    """Make a new proxy with a lifetime of one week."""
+    if passphrase:
+        p = subprocess.Popen(['voms-proxy-init', '--voms', voms, '--valid', '192:00'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout = p.communicate(input=passphrase+'\n')[0]
+        retcode = p.returncode
+        if not retcode == 0:
+            raise ProxyError( 'Proxy initialization command failed: '+stdout )
+    else:
+        retcode = subprocess.call( ['voms-proxy-init', '--voms', voms, '--valid', '192:00'] )
+    if not retcode == 0:
+        raise ProxyError( 'Proxy initialization command failed.')
+
+def checkAndRenewVomsProxy( time=604800, voms='cms:/cms/dcms', passphrase=None ):
+    """Check if the proxy is valid longer than time and renew if needed."""
+    if not checkVomsProxy( time ):
+        renewVomsProxy(passphrase=passphrase)
+        if not checkVomsProxy( time ):
+            raise ProxyError( 'Proxy still not valid long enough!' )
+
+def readSampleFile(filename,options):
     global runOnMC 
     global runOnData
     global runOnGen 
@@ -410,30 +513,100 @@ def getDatasetSummary( dataset ):
     return datasetSummary
 
 
-def testGetGlobalTag(SampleFileInfoDict):
-    pset = SampleFileInfoDict['pset'] 
-    with open(pset,"rb" ) as psetfile:
-        cfo = imp.load_source("pycfg", pset, psetfile )
-        globalTag = cfo.getGlobalTag()
-        del cfo
-        return globalTag
+#~ def getGlobalTag(SampleFileInfoDict):
+    #~ pset = SampleFileInfoDict['pset'] 
+    
+    #~ with open(pset,"rb" ) as psetfile:
+        #~ cfo = imp.load_source("pycfg", pset, psetfile )
+        #~ globalTag = cfo.getGlobalTag()
+        #~ del cfo
+        #~ return globalTag
+def getGlobalTag(options):
+    someCondition = False
+    if options.globalTag:
+        globalTag =  options.globalTag 
+    elif someCondition:
+        log.info("this is a place where Global tags will be defined during the run")
+    else:
+        #find default globalTag
+        from Configuration.AlCa.autoCond import autoCond
+        if runOnData:
+            #~ globalTag = cms.string( autoCond[ 'com10' ] )
+            globalTag =  autoCond[ 'com10' ]
+        else:
+            globalTag = autoCond[ 'startup' ] 
+    return globalTag
 
-def submitSample2db(name,sample,SampleFileInfoDict):
+def createDBlink():
+    import MUSiCProject.Tools.aix3adb as aix3adb
+    
+    # Create a database object.
+    dblink = aix3adb.aix3adb()
+
+    # Authorize to database.
+    log.info( "Connecting to database: 'http://cern.ch/aix3adb'" )
+    dblink.authorize()
+    log.info( 'Authorized to database.' )
+    return dblink
+
+def submitSample2db(name,sample,SampleFileInfoDict,dblink):
     
     datasetInfos[ 'original_name' ] = sample
     datasetInfos[ 'energy' ] = SampleFileInfoDict['energy']
     datasetInfos[ 'iscreated' ] = 1
     datasetInfos[ 'skimmer_name' ] = 'MUSiCSkimmer'
     datasetInfos[ 'skimmer_cmssw' ] = os.getenv( 'CMSSW_VERSION' )
-    datasetInfos[ 'skimmer_globaltag' ] = str( process.GlobalTag.globaltag ).split( "'" )[1]
+    datasetInfos[ 'skimmer_globaltag' ] = SampleFileInfoDict['globalTag']
+    
     if options.no_tag:
         datasetInfos[ 'skimmer_version' ] = 'Not tagged'
     else:
-        datasetInfos[ 'skimmer_version' ] = gitTag
-        
+        datasetInfos[ 'skimmer_version' ] = SampleFileInfoDict['gitTag']
     
+    datasetTags = dict()
+    datasetTags[ 'MUSiC_Skimming_cfg' ] = SampleFileInfoDict['pset']
+    datasetTags[ 'MUSiC_Processname' ] = name
 
+    log.info( "Registering '%s' at database 'http://cern.ch/aix3adb'. " % name )
 
+    # Create a text file in the crab folder to log the database ID.
+    # This ID is unique for each database entry.
+    DBconfig = ConfigParser.SafeConfigParser()
+    DBconfig.add_section( 'DB' )    
+    
+    if runOnMC == True:
+        datasetInfos[ 'generator' ] = SampleFileInfoDict['generator']
+        datasetInfos[ 'tags' ] = datasetTags
+
+        if not options.dry_run:
+            # Send all info on this MC sample to the database.
+            DBentry = dblink.registerMCSample( datasetInfos )
+            log.debug( DBentry )
+            DBconfig.set( 'DB', 'ID', str( DBentry[ 'id' ] ) )
+            DBconfig.set( 'DB', 'Table', 'MC samples' )
+        else:
+            log.info( 'Dry-run: Would have registered this MC sample at database:\n%s' % datasetInfos )
+
+    elif runOnData == True:
+        # Syntax of the lumimask file: DCS-firstrun-lastrun.json
+        ( firstrun, lastrun ) = os.path.basename( lumi_mask).split( '.' )[0].split( '-' )[1:3]
+        datasetInfos[ 'firstrun' ] = firstrun
+        datasetInfos[ 'lastrun' ] = lastrun
+        datasetInfos[ 'jsonfile' ] = lumi_mask
+        datasetTags[ 'DCSOnly_JSON' ] = DCSOnly_json
+        datasetInfos[ 'tags' ] = datasetTags
+    
+        if not options.dry_run:
+            # Send all info on this Data sample to the database.
+            DBentry = dblink.registerDataSample( datasetInfos )
+            log.debug( DBentry )
+            DBconfig.set( 'DB', 'ID', str( DBentry[ 'id' ] ) )
+            DBconfig.set( 'DB', 'Table', 'data samples' )
+        else:
+            log.info( 'Dry-run: Would have registered this Data sample at database:\n%s' % datasetInfos )
+    else:
+        log.error( "Not all necessary arguments given in config: '%s'." % sample_file )
+        
 def createTag( options, skimmer_dir ):
     # Save the current working directory to get back here later.
     workdir = os.getcwd()
@@ -530,110 +703,104 @@ def createTag( options, skimmer_dir ):
 
     return tag
 
-## parse user input
-parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
-parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
-parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/configs]' )
-parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
-parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
-                   help='Only submit samples matching PATTERNS (bash-like ' \
-                        'patterns only, comma separated values. ' \
-                        'E.g. --only QCD* ). [default: %default]' )
-parser.add_option( '-S', '--submit', action='store_true', default=False,
-                   help='Force the submission of jobs, even if a CRAB task with the given process name already exists. [default: %default]' )
-parser.add_option( '-d', '--dbsUrl', metavar='DBSURL',default='global', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
-parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB or registering samples to the database.' )
-parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choices,
-                   help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
-parser.add_option( '--noTag', action='store_true', default=False,
-#~ parser.add_option( '--no-tag', action='store_true', default=False,
-                   help="Do not create a tag in the skimmer repository. [default: %default]" )
-parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1 separated by comma, e.g. T2_DE_RWTH,T2_US_Purdue  ' )
-##              
-# new options since crab3
-#
-#new general options for music_crab3
-# new feature alternative username
-parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
-parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
-#new  options for General section in pset
-parser.add_option( '--workingArea',metavar='DIR',default=None,help='The area (full or relative path) where to create the CRAB project directory. ' 
-                         'If the area doesn\'t exist, CRAB will try to create it using the mkdir command' \
-                         ' (without -p option). Defaults to the current working directory.'       )  
-parser.add_option( '-t', '--transferOutput', action='store_true',default=True,help="Whether to transfer the output to the storage site"
-                                                'or leave it at the runtime site. (Not transferring the output might'\
-                                                ' be useful for example to avoid filling up the storage area with'\
-                                                ' useless files when the user is just doing some test.) ' )  
-parser.add_option( '--log', action='store_true',default=False,help='Whether or not to copy the cmsRun stdout /'\
-                                                'stderr to the storage site. If set to False, the last 1 MB'\
-                                                ' of each job are still available through the monitoring in '\
-                                                'the job logs files and the full logs can be retrieved from the runtime site with') 
-parser.add_option( '--failureLimit', help='The number of jobs that may fail permanently before the entire task is cancelled. '\
-                                            'Defaults to 10% of the jobs in the task. ')
+def setupLogging(options):
+    #setup logging
+    format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
+    logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )   
+    formatter = logging.Formatter( format )
+    log_file_name = 'music_crab_' + options.isodatetime + '.log'
+    hdlr = logging.FileHandler( log_file_name, mode='w' )
+    hdlr.setFormatter( formatter )
+    log.addHandler( hdlr )
 
-                                    
-# new options for JobType       in pset
-parser.add_option('--pyCfgParams',default =None, help="List of parameters to pass to the CMSSW parameter-set configuration file, as explained here. For example, if set to "\
-"[\'myOption\',\'param1=value1\',\'param2=value2\'], then the jobs will execute cmsRun JobType.psetName myOption param1=value1 param2=value2. ")
-parser.add_option('--inputFiles',help='List of private input files needed by the jobs. ')
-parser.add_option('--outputFiles',help='List of output files that need to be collected, besides those already specified in the output'\
-                                            ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
-parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ') 
-parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
-parser.add_option('--maxjobruntime', default=72,help="Overwrite the maxjobruntime if present in samplefile [default: 72]" ) 
-parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" ) 
-parser.add_option('--priority', help='Task priority among the user\'s own tasks. Higher priority tasks will be processed before lower priority.'\
-                                                ' Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a'\
-                                                ' task are given a priority boost of 10. [default  10] ' ) 
-parser.add_option('-n','--name',help="Music Process name [default: /Music/{current_date}/]")
-parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: False]")
-
-#new options for Data in pset
-parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: 10.000]")
-parser.add_option('--ignoreLocality',action='store_true',default=False,help="Set to True to allow jobs to run at any site,"
-                                                    "regardless of whether the dataset is located at that site or not. "\
-                                                    "Remote file access is done using Xrootd. The parameters Site.whitelist"\
-                                                    " and Site.blacklist are still respected. This parameter is useful to allow "\
-                                                    "jobs to run on other sites when for example a dataset is available on only one"\
-                                                    " or a few sites which are very busy with jobs. Defaults to False. ")
-
-(options, args ) = parser.parse_args()
-
-now = datetime.datetime.now()
-isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
-options.isodatetime = isodatetime
-
-# Write everything into a log file in the directory you are submitting from.
-log = logging.getLogger( 'music_crab' )
-
-
-#setup logging
-format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
-logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )   
-
-
-formatter = logging.Formatter( format )
-log_file_name = 'music_crab_' + options.isodatetime + '.log'
-hdlr = logging.FileHandler( log_file_name, mode='w' )
-hdlr.setFormatter( formatter )
-log.addHandler( hdlr )
-
-
-
-
-# define some module-wide switches
-runOnMC = False
-runOnData = False
-runOnGen = False
-
-
-#get current user HNname
-if options.user:
-    user = options.user
-else:
-    #~ user = os.getenv( 'LOGNAME' )
-    user = crab_checkHNname()
-
+def commandline_parsing():
+    ##parse user input
+    ####################################
+    # The following options
+    # were already present in muic_crab
+    ####################################
+    parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
+    parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
+    parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/configs]' )
+    parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
+    parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
+                       help='Only submit samples matching PATTERNS (bash-like ' \
+                            'patterns only, comma separated values. ' \
+                            'E.g. --only QCD* ). [default: %default]' )
+    parser.add_option( '-S', '--submit', action='store_true', default=False,
+                       help='Force the submission of jobs, even if a CRAB task with the given process name already exists. [default: %default]' )
+    parser.add_option( '-d', '--dbsUrl', metavar='DBSURL',default='global', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
+    parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB or registering samples to the database.' )
+    parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choices,
+                       help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
+    #~ parser.add_option( '--noTag', action='store_true', default=False,
+    parser.add_option( '--noTag', action='store_true', default=False,help="Do not create a tag in the skimmer repository. [default: %default]" )
+    parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1 separated by comma, e.g. T2_DE_RWTH,T2_US_Purdue  ' )
+    parser.add_option( '-D', '--db', action='store_true', default=False,
+                       help="Register all datasets at the database: 'https://cern.ch/aix3adb/'. [default: %default]" )
+    #///////////////////////////////              
+    #// new options since crab3
+    #//////////////////////////////
+    
+    # new feature alternative username
+    parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
+    parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
+    ###########################################
+    # new  options for General section in pset
+    ##########################################
+    parser.add_option( '--workingArea',metavar='DIR',default=None,help='The area (full or relative path) where to create the CRAB project directory. ' 
+                             'If the area doesn\'t exist, CRAB will try to create it using the mkdir command' \
+                             ' (without -p option). Defaults to the current working directory.'       )  
+    parser.add_option( '-t', '--transferOutput', action='store_true',default=True,help="Whether to transfer the output to the storage site"
+                                                    'or leave it at the runtime site. (Not transferring the output might'\
+                                                    ' be useful for example to avoid filling up the storage area with'\
+                                                    ' useless files when the user is just doing some test.) ' )  
+    parser.add_option( '--log', action='store_true',default=False,help='Whether or not to copy the cmsRun stdout /'\
+                                                    'stderr to the storage site. If set to False, the last 1 MB'\
+                                                    ' of each job are still available through the monitoring in '\
+                                                    'the job logs files and the full logs can be retrieved from the runtime site with') 
+    parser.add_option( '--failureLimit', help='The number of jobs that may fail permanently before the entire task is cancelled. '\
+                                                'Defaults to 10% of the jobs in the task. ')
+    ########################################                                    
+    # new options for JobType in pset
+    ########################################
+    parser.add_option('--pyCfgParams',default =None, help="List of parameters to pass to the CMSSW parameter-set configuration file, as explained here. For example, if set to "\
+    "[\'myOption\',\'param1=value1\',\'param2=value2\'], then the jobs will execute cmsRun JobType.psetName myOption param1=value1 param2=value2. ")
+    parser.add_option('--inputFiles',help='List of private input files needed by the jobs. ')
+    parser.add_option('--outputFiles',help='List of output files that need to be collected, besides those already specified in the output'\
+                                                ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
+    parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ') 
+    parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
+    parser.add_option('--maxjobruntime', default=72,help="Overwrite the maxjobruntime if present in samplefile [default: 72]" ) 
+    parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" ) 
+    parser.add_option('--priority', help='Task priority among the user\'s own tasks. Higher priority tasks will be processed before lower priority.'\
+                                                    ' Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a'\
+                                                    ' task are given a priority boost of 10. [default  10] ' ) 
+    parser.add_option('-n','--name',help="Music Process name [default: /Music/{current_date}/]")
+    parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: False]")
+    ####################################
+    # new options for Data in pset
+    ####################################
+    parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: 10.000]")
+    parser.add_option('--ignoreLocality',action='store_true',default=False,help="Set to True to allow jobs to run at any site,"
+                                                        "regardless of whether the dataset is located at that site or not. "\
+                                                        "Remote file access is done using Xrootd. The parameters Site.whitelist"\
+                                                        " and Site.blacklist are still respected. This parameter is useful to allow "\
+                                                        "jobs to run on other sites when for example a dataset is available on only one"\
+                                                        " or a few sites which are very busy with jobs. Defaults to False. ")
+    
+    
+    (options, args ) = parser.parse_args()
+    now = datetime.datetime.now()
+    isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
+    options.isodatetime = isodatetime    
+    checkAndRenewVomsProxy()
+    #get current user HNname
+    if not options.user:
+        options.user = crab_checkHNname(options)
+        
+    return (options, args )
+    
 if __name__ == '__main__':
-  main()
+    main()
 
