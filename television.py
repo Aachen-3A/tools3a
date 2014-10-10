@@ -78,7 +78,7 @@ class Overview:
         self.taskOverviews = []
         self.height=stdscr.getmaxyx()[0]-16
         self.overview = curseshelpers.SelectTable(stdscr, top=10, height=self.height, maxrows=100+len(tasks))
-        self.overview.setColHeaders(["Task", "Status", "Total", "Pre Running", "Run.","RRun.","Abrt.","Fail.","OK","None","Retr."])
+        self.overview.setColHeaders(["Task", "Status", "Performance", "Total", "Pre Running", "Run.", "RRun.", "Abrt.", "Fail.", "OK", "Good", "None", "Retr."])
         for task in tasks:
             taskOverview = curseshelpers.SelectTable(stdscr, top=10, height=self.height, maxrows=100+len(task.jobs))
             taskOverview.setColHeaders(["Job", "Status", "In Status since", "FE-Status", "Exit Code"])
@@ -100,7 +100,8 @@ class Overview:
             else:
                 printmode=curses.A_BOLD
             #prepare and add row
-            cells = [task.name, task.frontEndStatus, statusnumbers['total'], statusnumbers['PENDING']+ statusnumbers['IDLE']+statusnumbers['SUBMITTED']+statusnumbers['REGISTERED'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers[None], statusnumbers['RETRIEVED']]
+            performance = '{0:>6.1%}'.format(statusnumbers['good']/(statusnumbers['good']+statusnumbers['bad']))
+            cells = [task.name, task.frontEndStatus, performance, statusnumbers['total'], statusnumbers['PENDING']+ statusnumbers['IDLE']+statusnumbers['SUBMITTED']+statusnumbers['REGISTERED'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers['good'], statusnumbers[None], statusnumbers['RETRIEVED']]
             self.overview.addRow(cells, printmode)
             taskOverview.clear()
             for job in task.jobs:
