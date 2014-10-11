@@ -94,8 +94,10 @@ class Overview:
             statusnumbers=task.jobStatusNumbers()
             if statusnumbers['good'] + statusnumbers['bad'] == 0:
                 performance = None
+                strperformance = ''
             else:
                 performance = statusnumbers['good']/(statusnumbers['good']+statusnumbers['bad'])
+                strperformance = '{0:>6.1%}'.format(performance)
             #formatting
             if performance is None:
                 # blue
@@ -116,7 +118,7 @@ class Overview:
                 icon = ">"
             else:
                 icon = " "
-            cells = [icon, task.name, task.frontEndStatus, '{0:>6.1%}'.format(performance), statusnumbers['total'], statusnumbers['PENDING']+ statusnumbers['IDLE']+statusnumbers['SUBMITTED']+statusnumbers['REGISTERED'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers['good'], statusnumbers[None], statusnumbers['RETRIEVED']]
+            cells = [icon, task.name, task.frontEndStatus, strperformance, statusnumbers['total'], statusnumbers['PENDING']+ statusnumbers['IDLE']+statusnumbers['SUBMITTED']+statusnumbers['REGISTERED'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers['good'], statusnumbers[None], statusnumbers['RETRIEVED']]
             self.overview.addRow(cells, printmode)
             taskOverview.clear()
             for job in task.jobs:
