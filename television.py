@@ -90,6 +90,7 @@ class Overview:
     def update(self, tasks, resubmitList, nextTaskId):
         self.tasks = tasks
         self.overview.clear()
+        totalstatusnumbers = collections.defaultdict(int)
         for (taskId, taskOverview, task) in zip(range(len(tasks)), self.taskOverviews, tasks):
             statusnumbers=task.jobStatusNumbers()
             if statusnumbers['good'] + statusnumbers['bad'] == 0:
@@ -120,6 +121,7 @@ class Overview:
                 icon = " "
             cells = [icon, task.name, task.frontEndStatus, strperformance, statusnumbers['total'], statusnumbers['PENDING']+ statusnumbers['IDLE']+statusnumbers['SUBMITTED']+statusnumbers['REGISTERED'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers['good'], statusnumbers[None], statusnumbers['RETRIEVED']]
             self.overview.addRow(cells, printmode)
+            totalstatusnumbers=addefaultdicts(totalstatusnumbers, statusnumbers)
             taskOverview.clear()
             for job in task.jobs:
                 try:
@@ -154,6 +156,14 @@ class Overview:
                 else:
                     printmode=curses.A_BOLD
                 taskOverview.addRow(cells, printmode)
+        if totalstatusnumbers['good'] + totalstatusnumbers['bad'] == 0:
+            performance = None
+            strperformance = ''
+        else:
+            performance = totalstatusnumbers['good']/(totalstatusnumbers['good']+totalstatusnumbers['bad'])
+            strperformance = '{0:>6.1%}'.format(performance)
+        cells = ["", "TOTAL", "", strperformance, totalstatusnumbers['total'], totalstatusnumbers['PENDING']+ totalstatusnumbers['IDLE']+totalstatusnumbers['SUBMITTED']+totalstatusnumbers['REGISTERED'], totalstatusnumbers['RUNNING'], totalstatusnumbers['REALLY-RUNNING'], totalstatusnumbers['ABORTED'], totalstatusnumbers['DONE-FAILED'], totalstatusnumbers['DONE-OK'], totalstatusnumbers['good'], totalstatusnumbers[None], totalstatusnumbers['RETRIEVED']]
+        self.overview.setFooters(cells)
         self._refresh()
     @property
     def currentTask(self):
@@ -211,7 +221,7 @@ def main(stdscr, options, args, passphrase):
         taskList.append(task)
         resubmitList.append(set())
     curses.noecho()
-    stdscr.keypad(1)
+    stdscr.keypad(0)
     updateInterval=60
     lastUpdate=datetime.datetime.now()
     
