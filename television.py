@@ -15,6 +15,7 @@ import multiprocessing
 import curseshelpers
 import pprint
 import logging
+import collections
 
 def addtime(tfor,tsince,tto):
     """Add two time intervals
@@ -77,7 +78,7 @@ class Overview:
         self.stdscr = stdscr
         self.taskOverviews = []
         self.height=stdscr.getmaxyx()[0]-16
-        self.overview = curseshelpers.SelectTable(stdscr, top=10, height=self.height, maxrows=100+len(tasks))
+        self.overview = curseshelpers.SelectTable(stdscr, top=10, height=self.height, maxrows=100+len(tasks), footer=True)
         widths=[2, 100, 12, 12, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]
         self.overview.setColHeaders(["", "Task", "Status", "Performance", "Total", "Prep.", "Run.", "RRun.", "Abrt.", "Fail.", "OK", "Good", "None", "Retr."], widths)
         for task in tasks:
@@ -121,7 +122,8 @@ class Overview:
                 icon = " "
             cells = [icon, task.name, task.frontEndStatus, strperformance, statusnumbers['total'], statusnumbers['PENDING']+ statusnumbers['IDLE']+statusnumbers['SUBMITTED']+statusnumbers['REGISTERED'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers['good'], statusnumbers[None], statusnumbers['RETRIEVED']]
             self.overview.addRow(cells, printmode)
-            totalstatusnumbers=addefaultdicts(totalstatusnumbers, statusnumbers)
+            for key in statusnumbers:
+                totalstatusnumbers[key]+=statusnumbers[key]
             taskOverview.clear()
             for job in task.jobs:
                 try:
