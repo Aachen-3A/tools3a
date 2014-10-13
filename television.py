@@ -223,7 +223,7 @@ def main(stdscr, options, args, passphrase):
         taskList.append(task)
         resubmitList.append(set())
     curses.noecho()
-    stdscr.keypad(0)
+    stdscr.keypad(1)
     updateInterval=60
     lastUpdate=datetime.datetime.now()
     
