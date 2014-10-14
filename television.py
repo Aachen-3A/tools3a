@@ -64,7 +64,8 @@ def resubmit(taskList, resubmitList, status, overview):
     for (t, task) in zip(myTaskIds, myTaskList):
         for (j, job) in zip(range(len(task.jobs)), task.jobs):
             if job.status in status:
-                resubmitList[t].add(j)
+                if (job.status == "DONE-OK" and job.infos["ExitCode"]!="0") or job.status != "DONE-OK":
+                    resubmitList[t].add(j)
 
 class Overview:
     """This class incorporates the 'graphical' overviews of tasks, jobs and jobinfo.
@@ -141,22 +142,25 @@ class Overview:
                 try:
                     jobreturncode=job.infos["ExitCode"]
                 except:
-                    jobreturncode=""
+                    jobreturncode = ""
                 try:
                     jobsince = datetime.datetime.fromtimestamp(int(job.infos["history"][-1][1])).strftime('%Y-%m-%d %H:%M:%S')
                 except:
-                    jobsince=""
+                    jobsince = ""
                 cells = [jobid, jobstatus, jobsince, jobfestatus, jobreturncode]
                 if job.nodeid in resubmitList[taskId]:
-                    printmode=curses.color_pair(5) | curses.A_BOLD
+                    printmode = curses.color_pair(5) | curses.A_BOLD
                 elif jobstatus in ['DONE-FAILED', 'ABORTED']:
-                    printmode=curses.color_pair(1) | curses.A_BOLD
-                elif jobfestatus=="RETRIEVED":
-                    printmode=curses.color_pair(2)
+                    printmode = curses.color_pair(1) | curses.A_BOLD
+                elif jobfestatus == "RETRIEVED":
+                    if jobreturncode == "0":
+                        printmode=curses.color_pair(2)
+                    else:
+                        printmode = curses.color_pair(1) | curses.A_BOLD
                 elif "RUNNING" in jobstatus:
-                    printmode=curses.color_pair(2) | curses.A_BOLD
+                    printmode = curses.color_pair(2) | curses.A_BOLD
                 else:
-                    printmode=curses.A_BOLD
+                    printmode = curses.A_BOLD
                 taskOverview.addRow(cells, printmode)
         if totalstatusnumbers['good'] + totalstatusnumbers['bad'] == 0:
             performance = None
@@ -244,12 +248,11 @@ def main(stdscr, options, args, passphrase):
     while True:
         # main loop
         stdscr.addstr(1, 0, "Exit (q)  Raise/lower update interval (+)/(-) ("+str(updateInterval)+")  More information (return)  Update (SPACE)     ")
-        stdscr.addstr(2, 0, "Resubmit job (r)   By Status:  ABORTED (1), DONE-FAILED (2), (REALLY-)RUNNING (3), None (4)")
+        stdscr.addstr(2, 0, "Resubmit job (r)   By Status:  ABORTED (1), DONE-FAILED (2), (REALLY-)RUNNING (3), None (4), DONE-OK exitcode!=0 (5)")
         stdscr.addstr(3, 0, "Next update {0}       ".format(timerepr(lastUpdate+datetime.timedelta(seconds=updateInterval)-datetime.datetime.now())))
         stdscr.addstr(4, 0, "Certificate expires {0}       ".format(timerepr(certtime-datetime.datetime.now())))
-        stdscr.addstr(5, 0, "Next Task to update: " + taskList[nextTaskId].name)
         if waitingForExit:
-            stdscr.addstr(6,0,"Exiting... Waiting for status retrieval to finish...")
+            stdscr.addstr(6,0,"Exiting... Waiting for status retrieval to finish...", curses.color_pair(1) | curses.A_BOLD)
         stdscr.refresh()
         # refresh overview (the task/job table or the jobinfo text)
         overview.currentView.refresh()
@@ -325,6 +328,9 @@ def main(stdscr, options, args, passphrase):
             overview.update(taskList, resubmitList, nextTaskId)
         elif c == ord('4'):
             resubmit(taskList, resubmitList, ["None", None], overview)
+            overview.update(taskList, resubmitList, nextTaskId)
+        elif c == ord('5'):
+            resubmit(taskList, resubmitList, ["DONE-OK"], overview)
             overview.update(taskList, resubmitList, nextTaskId)
         elif c==ord('r') and overview.level==1:
             resubmitList[overview.currentTask].add(overview.currentJob)
