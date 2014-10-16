@@ -15,6 +15,7 @@ import multiprocessing
 import curseshelpers
 import pprint
 import logging
+import collections
 
 def addtime(tfor,tsince,tto):
     """Add two time intervals
@@ -63,45 +64,67 @@ def resubmit(taskList, resubmitList, status, overview):
     for (t, task) in zip(myTaskIds, myTaskList):
         for (j, job) in zip(range(len(task.jobs)), task.jobs):
             if job.status in status:
-                resubmitList[t].add(j)
+                if (job.status == "DONE-OK" and job.infos["ExitCode"]!="0") or job.status != "DONE-OK":
+                    resubmitList[t].add(j)
 
 class Overview:
     """This class incorporates the 'graphical' overviews of tasks, jobs and jobinfo.
     Tasks and jobs overviews are stored persistantly in order to be aware of the selected task/job.
     Jobinfo is created on the fly.
     """
-    def __init__(self, stdscr, tasks, resubmitList):
+    def __init__(self, stdscr, tasks, resubmitList, nextTaskId):
         self.level = 0
         self.taskId = 0
         self.cursor = 0
         self.stdscr = stdscr
         self.taskOverviews = []
         self.height=stdscr.getmaxyx()[0]-16
-        self.overview = curseshelpers.SelectTable(stdscr, top=10, height=self.height, maxrows=100+len(tasks))
-        self.overview.setColHeaders(["Task", "Status", "Total", "Pre Running", "Run.","RRun.","Abrt.","Fail.","OK","None","Retr."])
+        self.overview = curseshelpers.SelectTable(stdscr, top=10, height=self.height, maxrows=100+len(tasks), footer=True)
+        widths=[2, 100, 12, 12, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]
+        self.overview.setColHeaders(["", "Task", "Status", "Performance", "Total", "Prep.", "Run.", "RRun.", "Abrt.", "Fail.", "OK", "Good", "None", "Retr."], widths)
         for task in tasks:
             taskOverview = curseshelpers.SelectTable(stdscr, top=10, height=self.height, maxrows=100+len(task.jobs))
-            taskOverview.setColHeaders(["Job", "Status", "In Status since", "FE-Status", "Exit Code"])
+            widths=[100, 16, 22, 16, 10]
+            taskOverview.setColHeaders(["Job", "Status", "In Status since", "FE-Status", "Exit Code"], widths)
             self.taskOverviews.append(taskOverview)
-        self.update(tasks, resubmitList)
+        self.update(tasks, resubmitList, nextTaskId)
         self.tasks = tasks
-    def update(self, tasks, resubmitList):
+    def update(self, tasks, resubmitList, nextTaskId):
         self.tasks = tasks
         self.overview.clear()
+        totalstatusnumbers = collections.defaultdict(int)
         for (taskId, taskOverview, task) in zip(range(len(tasks)), self.taskOverviews, tasks):
             statusnumbers=task.jobStatusNumbers()
-            #formatting
-            if statusnumbers['DONE-FAILED'] or statusnumbers['ABORTED']:
-                printmode=curses.color_pair(1) | curses.A_BOLD
-            elif task.frontEndStatus=="RETRIEVED":
-                printmode=curses.color_pair(2)
-            elif task.frontEndStatus=="RUNNING":
-                printmode=curses.color_pair(2) | curses.A_BOLD
+            if statusnumbers['good'] + statusnumbers['bad'] == 0:
+                performance = None
+                strperformance = ''
             else:
-                printmode=curses.A_BOLD
+                performance = statusnumbers['good']/(statusnumbers['good']+statusnumbers['bad'])
+                strperformance = '{0:>6.1%}'.format(performance)
+            #formatting
+            if performance is None:
+                # blue
+                printmode = curses.color_pair(4)
+            elif performance <=0.95:
+                # red
+                printmode = curses.color_pair(1)
+            elif 0.95<performance<1:
+                # yellow
+                printmode = curses.color_pair(3)
+            else:
+                #green
+                printmode = curses.color_pair(2)
+            if task.frontEndStatus != "RETRIEVED":
+                printmode = printmode | curses.A_BOLD
             #prepare and add row
-            cells = [task.name, task.frontEndStatus, statusnumbers['total'], statusnumbers['PENDING']+ statusnumbers['IDLE']+statusnumbers['SUBMITTED']+statusnumbers['REGISTERED'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers[None], statusnumbers['RETRIEVED']]
+            if nextTaskId == taskId:
+                icon = ">"
+            else:
+                icon = " "
+            cells = [icon, task.name, task.frontEndStatus, strperformance, statusnumbers['total'], statusnumbers['PENDING']+ statusnumbers['IDLE']+statusnumbers['SUBMITTED']+statusnumbers['REGISTERED'], statusnumbers['RUNNING'], statusnumbers['REALLY-RUNNING'], statusnumbers['ABORTED'], statusnumbers['DONE-FAILED'], statusnumbers['DONE-OK'], statusnumbers['good'], statusnumbers[None], statusnumbers['RETRIEVED']]
             self.overview.addRow(cells, printmode)
+            for key in statusnumbers:
+                totalstatusnumbers[key]+=statusnumbers[key]
             taskOverview.clear()
             for job in task.jobs:
                 try:
@@ -119,23 +142,34 @@ class Overview:
                 try:
                     jobreturncode=job.infos["ExitCode"]
                 except:
-                    jobreturncode=""
+                    jobreturncode = ""
                 try:
                     jobsince = datetime.datetime.fromtimestamp(int(job.infos["history"][-1][1])).strftime('%Y-%m-%d %H:%M:%S')
                 except:
-                    jobsince=""
+                    jobsince = ""
                 cells = [jobid, jobstatus, jobsince, jobfestatus, jobreturncode]
                 if job.nodeid in resubmitList[taskId]:
-                    printmode=curses.color_pair(5) | curses.A_BOLD
+                    printmode = curses.color_pair(5) | curses.A_BOLD
                 elif jobstatus in ['DONE-FAILED', 'ABORTED']:
-                    printmode=curses.color_pair(1) | curses.A_BOLD
-                elif jobfestatus=="RETRIEVED":
-                    printmode=curses.color_pair(2)
+                    printmode = curses.color_pair(1) | curses.A_BOLD
+                elif jobfestatus == "RETRIEVED":
+                    if jobreturncode == "0":
+                        printmode=curses.color_pair(2)
+                    else:
+                        printmode = curses.color_pair(1) | curses.A_BOLD
                 elif "RUNNING" in jobstatus:
-                    printmode=curses.color_pair(2) | curses.A_BOLD
+                    printmode = curses.color_pair(2) | curses.A_BOLD
                 else:
-                    printmode=curses.A_BOLD
+                    printmode = curses.A_BOLD
                 taskOverview.addRow(cells, printmode)
+        if totalstatusnumbers['good'] + totalstatusnumbers['bad'] == 0:
+            performance = None
+            strperformance = ''
+        else:
+            performance = totalstatusnumbers['good']/(totalstatusnumbers['good']+totalstatusnumbers['bad'])
+            strperformance = '{0:>6.1%}'.format(performance)
+        cells = ["", "TOTAL", "", strperformance, totalstatusnumbers['total'], totalstatusnumbers['PENDING']+ totalstatusnumbers['IDLE']+totalstatusnumbers['SUBMITTED']+totalstatusnumbers['REGISTERED'], totalstatusnumbers['RUNNING'], totalstatusnumbers['REALLY-RUNNING'], totalstatusnumbers['ABORTED'], totalstatusnumbers['DONE-FAILED'], totalstatusnumbers['DONE-OK'], totalstatusnumbers['good'], totalstatusnumbers[None], totalstatusnumbers['RETRIEVED']]
+        self.overview.setFooters(cells)
         self._refresh()
     @property
     def currentTask(self):
@@ -207,20 +241,18 @@ def main(stdscr, options, args, passphrase):
     certtime=datetime.datetime.now()+datetime.timedelta(seconds=cesubmit.timeLeftVomsProxy())
     # waitingForUpdate stores the current task when its updated. waitingForExit is needed to wait for all jobs to finish before exiting
     waitingForUpdate, waitingForExit = None, False
-
-    overview = Overview(stdscr, taskList, resubmitList)
+    nextTaskId=0
+    overview = Overview(stdscr, taskList, resubmitList, nextTaskId)
     # this is the pool for the update task.
     pool = None
-    nextTaskId=0
     while True:
         # main loop
         stdscr.addstr(1, 0, "Exit (q)  Raise/lower update interval (+)/(-) ("+str(updateInterval)+")  More information (return)  Update (SPACE)     ")
-        stdscr.addstr(2, 0, "Resubmit job (r)   By Status:  ABORTED (1), DONE-FAILED (2), (REALLY-)RUNNING (3), None (4)")
+        stdscr.addstr(2, 0, "Resubmit job (r)   By Status:  ABORTED (1), DONE-FAILED (2), (REALLY-)RUNNING (3), None (4), DONE-OK exitcode!=0 (5)")
         stdscr.addstr(3, 0, "Next update {0}       ".format(timerepr(lastUpdate+datetime.timedelta(seconds=updateInterval)-datetime.datetime.now())))
         stdscr.addstr(4, 0, "Certificate expires {0}       ".format(timerepr(certtime-datetime.datetime.now())))
-        stdscr.addstr(5, 0, "Next Task to update: " + taskList[nextTaskId].name)
         if waitingForExit:
-            stdscr.addstr(6,0,"Exiting... Waiting for status retrieval to finish...")
+            stdscr.addstr(6,0,"Exiting... Waiting for status retrieval to finish...", curses.color_pair(1) | curses.A_BOLD)
         stdscr.refresh()
         # refresh overview (the task/job table or the jobinfo text)
         overview.currentView.refresh()
@@ -233,7 +265,7 @@ def main(stdscr, options, args, passphrase):
                     if result.successful():
                         # rewrite the task into the tasklist, this is necessary as the multiprocessing pickles the object
                         taskList[waitingForUpdate] = result.get()
-                        overview.update(taskList,resubmitList)
+                        overview.update(taskList,resubmitList, nextTaskId)
                     lastUpdate = datetime.datetime.now()
                     waitingForUpdate = None
             else:
@@ -244,7 +276,7 @@ def main(stdscr, options, args, passphrase):
                 if False:  #set to true for serious debugging, this disables the multiprocessing
                     for task in taskList:
                         checkTask(task)
-                    overview.update(taskList, resubmitList)
+                    overview.update(taskList, resubmitList, nextTaskId)
                     lastUpdate = datetime.datetime.now()
                 else:
                     # prepare parameters
@@ -287,19 +319,22 @@ def main(stdscr, options, args, passphrase):
             overview.currentView.end()
         elif c == ord('1'):
             resubmit(taskList, resubmitList, ["ABORTED"], overview)
-            overview.update(taskList, resubmitList)
+            overview.update(taskList, resubmitList, nextTaskId)
         elif c == ord('2'):
             resubmit(taskList, resubmitList, ["DONE-FAILED"], overview)
-            overview.update(taskList, resubmitList)
+            overview.update(taskList, resubmitList, nextTaskId)
         elif c == ord('3'):
             resubmit(taskList, resubmitList, ["RUNNING", "REALLY-RUNNING"], overview)
-            overview.update(taskList, resubmitList)
+            overview.update(taskList, resubmitList, nextTaskId)
         elif c == ord('4'):
             resubmit(taskList, resubmitList, ["None", None], overview)
-            overview.update(taskList, resubmitList)
+            overview.update(taskList, resubmitList, nextTaskId)
+        elif c == ord('5'):
+            resubmit(taskList, resubmitList, ["DONE-OK"], overview)
+            overview.update(taskList, resubmitList, nextTaskId)
         elif c==ord('r') and overview.level==1:
             resubmitList[overview.currentTask].add(overview.currentJob)
-            overview.update(taskList, resubmitList)
+            overview.update(taskList, resubmitList, nextTaskId)
         elif c == 10:   #enter key
             overview.down()
         else:
