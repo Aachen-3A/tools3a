@@ -228,7 +228,7 @@ def main(stdscr, options, args, passphrase):
         resubmitList.append(set())
     curses.noecho()
     stdscr.keypad(1)
-    updateInterval=60
+    updateInterval=1
     lastUpdate=datetime.datetime.now()
     
     # paint top rows
@@ -295,7 +295,7 @@ def main(stdscr, options, args, passphrase):
         if c == ord('+'):
             updateInterval+=30
         elif c == ord('-'):
-            updateInterval=max(30,updateInterval-30)
+            updateInterval=max(1,updateInterval-30)
         elif c == ord('q') or c == 27 or c == curses.KEY_BACKSPACE:
             # q escape or backspace
             if overview.level:
