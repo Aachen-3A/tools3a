@@ -689,7 +689,7 @@ def commandline_parsing():
     ###########################################
     # new  options for General section in pset
     ##########################################
-    parser.add_option( '--workingArea',metavar='DIR',default=None,help='The area (full or relative path) where to create the CRAB project directory. ' 
+    parser.add_option( '--workingArea',metavar='DIR',default=os.getcwd(),help='The area (full or relative path) where to create the CRAB project directory. ' 
                              'If the area doesn\'t exist, CRAB will try to create it using the mkdir command' \
                              ' (without -p option). Defaults to the current working directory.'       )  
     parser.add_option( '-t', '--transferOutput', action='store_true',default=True,help="Whether to transfer the output to the storage site"
