@@ -275,7 +275,9 @@ def crab_checkwrite(site,options,path='noPath'):
         runPath ="./"
     p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=r"%s"%runPath,shell=True)
     (stringlist,string_err) = p.communicate()
-    if len(string_err) > 0:
+    if not "Able to write to /store/user/tpook on site T2_DE_RWTH"  in stringlist:
+        
+    #~ if len(string_err) > 0:
         log.error( "The crab checkwrite command failed for site: %s"%site )
         log.error(string_err)
         return False
