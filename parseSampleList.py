@@ -18,6 +18,8 @@ def main():
     parser = optparse.OptionParser( usage = usage, description = description, version = '%prog 0' )
     parser.add_option( '-c', '--config', action = 'store', default = 'mc_cfg.py', metavar = 'CONFIG',
                        help = 'Specify the CMSSW config file you want to use for skimming. [default = %default]' )
+    parser.add_option( '-e', '--cme', action = 'store', default = '13', metavar = 'ENERGY',
+                       help = 'The center-of-mass energy for this sample' )
     parser.add_option( '-p', '--prefix', action = 'store', default = None, metavar = 'PREFIX',
                        help = 'Specify a PREFIX for your output filename (e.g.  production version). [default = %default]' )
     parser.add_option( '-P', '--postfix', action = 'store', default = None, metavar = 'POSTFIX',
@@ -130,6 +132,8 @@ def main():
                 else:
                     file = open( gen_file_name, 'w' )
                     print >> file, 'generator = ' + gen[0].upper()
+                    print >> file, 'generator = ' + gen[0].upper()
+                    print >> file, 'CME = ' + options.cme
                     print >> file, 'config = ' + options.config
                     print >> file
 
