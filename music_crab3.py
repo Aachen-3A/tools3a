@@ -124,19 +124,23 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     config.add_section('JobType')
     config.set( 'JobType', 'pluginName', 'Analysis' )
     config.set( 'JobType', 'psetName', SampleFileInfoDict['pset'] )
+    
     # next two lines use old (pickle way)
     #~ preloadProcess(name,sample,SampleFileInfoDict)
     #~ config.set( 'JobType', 'psetName', name+'_cfg.py' )
+    
     if options.failureLimit:
         try:
             config.set( 'JobType', 'failureLimit', "%.2f"%float(options.failureLimit) )
         except:
             log.error('No failureLimit set. failureLimit needs float')
     # add name, datasetpath, globalTag (optional) and custom Params (optional)
-    paramlist = ['--psname=',name,'--psdatasetpath=',sample]
+    # arguments starting with '-' or '--' are not allowed, because they
+    # are interpreted as cmsRun options
+    paramlist = ['name=%s'%name,'datasetpath=%s'%sample]
     #~ if options.globalTag:
         #~ paramlist.extend(['--psglobalTag',options.globalTag])
-    paramlist.extend(['--psglobalTag=',SampleFileInfoDict['globalTag']])
+    paramlist.extend(['globalTag=%s'%SampleFileInfoDict['globalTag']])
     if options.pyCfgParams:
         paramlist.append(options.pyCfgParams)
     config.set( 'JobType', 'pyCfgParams', paramlist )   
