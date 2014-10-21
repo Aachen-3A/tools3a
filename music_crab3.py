@@ -97,39 +97,6 @@ def main():
         else:
             log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
     
-def timeLeftVomsProxy():
-    """Returns True if the proxy is valid longer than time, False otherwise."""
-    proc = subprocess.Popen( ['voms-proxy-info', '-timeleft' ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
-    output = proc.communicate()[0]
-    if proc.returncode != 0:
-        return False
-    else:
-        return int( output )
-
-def checkVomsProxy( time=86400 ):
-    """Returns True if the proxy is valid longer than time, False otherwise."""
-    timeleft = timeLeftVomsProxy()
-    return timeleft > time
-
-def renewVomsProxy( voms='cms:/cms/dcms', passphrase=None ):
-    """Make a new proxy with a lifetime of one week."""
-    if passphrase:
-        p = subprocess.Popen(['voms-proxy-init', '--voms', voms, '--valid', '192:00'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.STDOUT)
-        stdout = p.communicate(input=passphrase+'\n')[0]
-        retcode = p.returncode
-        if not retcode == 0:
-            raise ProxyError( 'Proxy initialization command failed: %s'%stdout )
-    else:
-        retcode = subprocess.call( ['voms-proxy-init', '--voms', voms, '--valid', '192:00'] )
-    if not retcode == 0:
-        raise ProxyError( 'Proxy initialization command failed.')
-
-def checkAndRenewVomsProxy( time=604800, voms='cms:/cms/dcms', passphrase=None ):
-    """Check if the proxy is valid longer than time and renew if needed."""
-    if not checkVomsProxy( time ):
-        renewVomsProxy(passphrase=passphrase)
-        if not checkVomsProxy( time ):
-            raise ProxyError( 'Proxy still not valid long enough!' )
                 
 def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     global runOnMC 
@@ -340,39 +307,7 @@ def crab_checkHNname(options):
             return hnname
     return "noHNname"
 
-def timeLeftVomsProxy():
-    """Returns True if the proxy is valid longer than time, False otherwise."""
-    proc = subprocess.Popen( ['voms-proxy-info', '-timeleft' ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT )
-    output = proc.communicate()[0]
-    if proc.returncode != 0:
-        return False
-    else:
-        return int( output )
 
-def checkVomsProxy( time=86400 ):
-    """Returns True if the proxy is valid longer than time, False otherwise."""
-    timeleft = timeLeftVomsProxy()
-    return timeleft > time
-
-def renewVomsProxy( voms='cms:/cms/dcms', passphrase=None ):
-    """Make a new proxy with a lifetime of one week."""
-    if passphrase:
-        p = subprocess.Popen(['voms-proxy-init', '--voms', voms, '--valid', '192:00'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.STDOUT)
-        stdout = p.communicate(input=passphrase+'\n')[0]
-        retcode = p.returncode
-        if not retcode == 0:
-            raise ProxyError( 'Proxy initialization command failed: '+stdout )
-    else:
-        retcode = subprocess.call( ['voms-proxy-init', '--voms', voms, '--valid', '192:00'] )
-    if not retcode == 0:
-        raise ProxyError( 'Proxy initialization command failed.')
-
-def checkAndRenewVomsProxy( time=604800, voms='cms:/cms/dcms', passphrase=None ):
-    """Check if the proxy is valid longer than time and renew if needed."""
-    if not checkVomsProxy( time ):
-        renewVomsProxy(passphrase=passphrase)
-        if not checkVomsProxy( time ):
-            raise ProxyError( 'Proxy still not valid long enough!' )
 
 def readSampleFile(filename,options):
     global runOnMC 
@@ -793,8 +728,12 @@ def commandline_parsing():
     (options, args ) = parser.parse_args()
     now = datetime.datetime.now()
     isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
-    options.isodatetime = isodatetime    
-    checkAndRenewVomsProxy()
+    options.isodatetime = isodatetime
+    
+    # check if user has valid proxy
+    import MUSiCProject.Tools.gridFunctions as gridFunctions 
+    gridFunctions.checkAndRenewVomsProxy()
+    
     #get current user HNname
     if not options.user:
         options.user = crab_checkHNname(options)
