@@ -735,7 +735,7 @@ def commandline_parsing():
     options.isodatetime = isodatetime
     
     # check if user has valid proxy
-    import MUSiCProject.Tools.gridFunctions as gridFunctions 
+    import gridFunctions 
     gridFunctions.checkAndRenewVomsProxy()
     
     #get current user HNname
