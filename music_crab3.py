@@ -23,7 +23,7 @@ import subprocess
 import imp
 import pickle
 import fnmatch
-
+from crabFunctions import *
 # some general definitions
 COMMENT_CHAR = '#'
 log_choices = [ 'ERROR', 'WARNING', 'INFO', 'DEBUG' ]
@@ -77,7 +77,7 @@ def main():
     
     
     # first check if user has permission to write to selected site
-    if not crab_checkwrite("T2_DE_RWTH",options):sys.exit(1)
+    if not crab_checkwrite(options,site="T2_DE_RWTH",crablog=log):sys.exit(1)
     
     
     
@@ -91,7 +91,7 @@ def main():
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
         log.info("Created crab config object")
         writeCrabConfig(key,CrabConfig,options)
-        crab_submit(key,options)
+        crab_submit(options,key,log)
         if options.db and not options.dry_run:
             submitSample2db(key, SampleDict[key][1],SampleFileInfoDict)
         else:
@@ -263,55 +263,6 @@ def writeCrabConfig(name,config,options):
 
 def getRunRange():
     return 'dummy'
-
-def crab_checkwrite(site,options,path='noPath'):    
-    log.info("Checking if user can write in output storage")
-    cmd = ['crab checkwrite --site %s --voGroup=dcms'%site ]
-    if not 'noPath' in path:
-        cmd[0] +=' --lfn=%s'%(path)
-    if options.workingArea:
-        runPath = options.workingArea
-    else:
-        runPath ="./"
-    p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=r"%s"%runPath,shell=True)
-    (stringlist,string_err) = p.communicate()
-    if not "Able to write to /store/user/%s on site %s"%(options.user,site)  in stringlist:
-        log.error( "The crab checkwrite command failed for site: %s"%site )
-        log.error(string_err)
-        return False
-    else:
-        log.info("Checkwrite was sucessfully called.")
-        return True
-        
-def crab_submit(name,options):
-    cmd = 'crab submit crab_%s_cfg.py'%name
-    if options.workingArea:
-        runPath = options.workingArea
-    else:
-        runPath ="./"
-    if options.dry_run:
-        log.info( 'Dry-run: Created config file. crab command would have been: %s'%cmd )
-    else:
-        p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,stdin=subprocess.PIPE,cwd=r"%s"%runPath,shell=True)
-        (stringlist,string_err) = p.communicate()
-        log.info("crab sumbit called for task %s"%name) 
-
-def crab_checkHNname(options):
-    cmd = 'crab checkHNname --voGroup=dcms'
-    if options.workingArea:
-        runPath = options.workingArea
-    else:
-        runPath ="./"
-    p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=r"%s"%runPath,shell=True)
-    (string_out,string_err) = p.communicate()
-    string_out = string_out.split("\n")
-    for line in string_out:
-        if "Your CMS HyperNews username is" in line:
-            hnname = line.split(":")[1].strip()
-            return hnname
-    return "noHNname"
-
-
 
 def readSampleFile(filename,options):
     global runOnMC 
@@ -729,6 +680,9 @@ def commandline_parsing():
                                                         " or a few sites which are very busy with jobs. Defaults to False. ")
     
     
+    # add options for crabFunctions
+    crab_commandlineOptions(parser) 	
+    
     (options, args ) = parser.parse_args()
     now = datetime.datetime.now()
     isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
@@ -740,7 +694,7 @@ def commandline_parsing():
     
     #get current user HNname
     if not options.user:
-        options.user = crab_checkHNname(options)
+        options.user = crab_checkHNname(options,log)
         
     return (options, args )
     
