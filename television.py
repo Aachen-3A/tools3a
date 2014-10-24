@@ -47,7 +47,7 @@ def checkTask(task, resubmitJobs):
     """
     task.resubmit(resubmitJobs)
     status = task.getStatus()
-    task.getOutput()
+    task.getOutput(4)
     status = task.getStatus()
     return task
 
