@@ -55,7 +55,7 @@ wget http://www.hepforge.org/archive/lhapdf/pdfsets/6.0.5/cteq6l1.tar.gz
 tar -xf cteq6l1.tar.gz
 
 # Set the enviroment
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/local/lib/
-export LHAPDF_BASE=$PWD/local/
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${PWD/local/lib/}
+export LHAPDF_BASE=${PWD/local/}
 
 cd $TEMPVAR
