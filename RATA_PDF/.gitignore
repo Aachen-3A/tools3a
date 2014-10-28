@@ -1,0 +1,9 @@
+# ignore LHAPDF folder and .tar.gz
+LHAPDF-6.0.5/
+LHAPDF-6.0.5.tar.gz
+
+# ignore the installed LHAPDF version
+local/
+
+#ignore yaml installation necessary for LHAPDF
+yaml-cpp/
