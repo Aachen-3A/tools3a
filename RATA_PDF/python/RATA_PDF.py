@@ -202,8 +202,8 @@ def main():
         temp = os.path.abspath(__file__)
         temp = os.path.realpath(temp)
         temp = os.path.dirname(temp)
-        temp = os.path.join(temp, "lib/library.so")
-	lib = CDLL("/home/home1/institut_3a/erdweg/Desktop/Software/tools3a/RATA_PDF/local/lib/library.so")
+        temp = os.path.join(temp, "../lib/library.so")
+	lib = CDLL(temp)
 	logging.debug('done')
 	
 	############################

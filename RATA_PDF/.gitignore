@@ -13,3 +13,6 @@ lib/hist_maker
 
 #ignore .log files
 *.log
+
+#ignore the tmp file used for the PDF calculations
+python/tmp/
