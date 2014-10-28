@@ -1,6 +1,14 @@
+#!/bin/bash
+TEMPVAR=`pwd`
+
+# PATH where LHAPDF should be installed (change if necessary)
+cd $TOOLS3A/RATA_PDF
+
+# Download LHAPDF version 6.0.5 (update if necessary)
 wget http://www.hepforge.org/archive/lhapdf/LHAPDF-6.0.5.tar.gz
 tar -xf LHAPDF-6.0.5.tar.gz
 
+# Download and compile yaml, necessary for LHAPDF compilation
 wget http://yaml-cpp.googlecode.com/files/yaml-cpp-0.3.0.tar.gz -O- | tar xz
 cd yaml-cpp
 cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=$PWD/../local
@@ -9,11 +17,14 @@ cd ..
 
 cd LHAPDF-6.0.5
 
+# Configure LHAPDF installation
 ./configure --with-boost=/cvmfs/cms.cern.ch/slc5_amd64_gcc462/external/boost/1.51.0/ --prefix=$PWD/../local --with-yaml-cpp=$PWD/../local
 
+# Compile and Install LHAPDF
 make -j8
 make install
 
+# Download the necessary PDF sets (change if necessary)
 cd ..
 cd local/share/LHAPDF/
 wget http://www.hepforge.org/archive/lhapdf/pdfsets/6.0.5/CT10.tar.gz
@@ -43,5 +54,8 @@ tar -xf NNPDF23_nlo_as_0122.tar.gz
 wget http://www.hepforge.org/archive/lhapdf/pdfsets/6.0.5/cteq6l1.tar.gz
 tar -xf cteq6l1.tar.gz
 
+# Set the enviroment
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/local/lib/
 export LHAPDF_BASE=$PWD/local/
+
+cd $TEMPVAR
