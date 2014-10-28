@@ -121,6 +121,6 @@ include $(DEPENDS)
 #$(DICT).o
 $(PROGRAM):  $(OBJECTS) 
 	$(LD) -shared $(LDFLAGS) $+ -o $@
-	$(LD) -shared $(LDFLAGS) $+ -Wl,-soname,library.so  -o lib/library.so $@
-		@mv $(PROGRAM) bin/
+	$(LD) -shared $(LDFLAGS) $+ -Wl,-soname,lib/library.so  -o lib/library.so $@
+		@mv $(PROGRAM) lib/
 		@echo "$@ done"
