@@ -199,7 +199,7 @@ def main():
 	#
 	# export LD_LIBRARY_PATH=$PWD:$LD_LIBRARY_PATH
 	logging.debug('loading library.so ...')
-	lib = CDLL("library.so")
+	lib = CDLL("$TOOLS3A/RATA_PDF/lib/library.so")
 	logging.debug('done')
 	
 	############################

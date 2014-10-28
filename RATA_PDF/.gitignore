@@ -10,3 +10,6 @@ yaml-cpp/
 
 #ignore compiled hist_maker
 bin/hist_maker
+
+#ignore .log files
+*.log

@@ -6,6 +6,6 @@ cd $TOOLS3A/RATA_PDF
 
 # Set the enviroment
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${PWD/local/lib/}
-export LHAPDF_BASE=${PWD/local/}
+export LHAPDF_BASE=$PWD/local/
 
 cd $TEMPVAR
