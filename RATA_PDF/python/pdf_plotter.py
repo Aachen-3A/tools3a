@@ -1,5 +1,5 @@
 ##@package pdf_plotter
-#Small script to plot the uncertainty bands cal.culated with RATA_PDF
+#Small script to plot the uncertainty bands calculated with RATA_PDF
 #
 #This script can be used to plot the uncertainty bands of different
 #PDF sets which were calculated with the RATA_PDF framework.

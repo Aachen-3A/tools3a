@@ -1,5 +1,13 @@
+##@package helper
+# helper for RATA_PDF pdf calculator
+#
+# Important helping functions for the actual PDF uncertainty calculation
+#
+# written by Soeren Erdweg 2013-2014
+
 #!/usr/bin/env python
 
+## Necessary imports
 import os
 import sys
 import subprocess
@@ -12,8 +20,13 @@ import ROOT as r
 import logging
 from ctypes import *
 
+## @var Process info
 info = r.ProcInfo_t()
 
+## Class for the different bash text colors
+#
+# To have an easy way to change the bash text color and to unset them
+# again, this calss can be used.
 class bcolors:
     HEADER = '\033[35m'
     OKBLUE = '\033[34m'
@@ -24,6 +37,7 @@ class bcolors:
     WHITE = '\033[37m'
     ENDC = '\033[0m'
 
+    ## Function to unset all colors
     def disable(self):
         self.HEADER = ''
         self.OKBLUE = ''
@@ -34,7 +48,12 @@ class bcolors:
         self.WHITE = ''
         self.ENDC = ''
 
-# getTerminalSize() : Displays the width and height of the current terminal
+## Function to get the size of the terminal
+#
+# Reads the width and height of the current terminal and returns
+# this two values.
+# @param[out] int(cr[1]) Width of the terminal
+# @param[out] int(cr[0]) Height of the terminal
 def getTerminalSize():
     env = os.environ
     def ioctl_GWINSZ(fd):
@@ -57,10 +76,13 @@ def getTerminalSize():
         cr = (env.get('LINES', 25), env.get('COLUMNS', 80))
     return int(cr[1]), int(cr[0])
 
-# update_progress() : Displays or updates a console progress bar
-## Accepts a float between 0 and 1. Any int will be converted to a float.
-## A value under 0 represents a 'halt'.
-## A value at 1 or bigger represents 100%
+## Function to create and update a progress bar
+#
+# This function displays or updates a console progress bar
+# It accepts a float between 0 and 1. Any int will be converted to a float.
+# A value under 0 represents a 'halt'.
+# A value at 1 or bigger represents 100%
+# @param[in] progress Relative progress that should be displayed
 def update_progress(progress):
     (width, height) = getTerminalSize()
     barLength = width-30 # Modify this to change the length of the progress bar
@@ -81,6 +103,10 @@ def update_progress(progress):
     sys.stdout.write(text)
     sys.stdout.flush()
 
+## Welcome output function
+#
+# Function to print the welcome output, consisting out of the ASCII art,
+# the programs name and the local time
 def welcome_output():
     logging.info("starting RATA PDF")
     logging.info("")
@@ -101,28 +127,42 @@ def welcome_output():
     print(time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))
     print("")
 
+## Farewell output function
+#
+# Function to print the farewell output, consisting out of the local time,
+# the programs run time and memory usage
+# @param[in] t0 Total wall time
+# @param[in] t1 Total CPU time
+# @todo fix the crash at the end of the program
 def farewell_output(t0,t1):
-	print("")
-	print("-"*20)
-	print(bcolors.HEADER + "\t All calculations done" + bcolors.ENDC)
-	print("-"*20)
-	print("\t" + time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))
-	print("\truntime in seconds : ")
-	print("\t" + bcolors.OKGREEN + str(time.clock() - t0) + bcolors.ENDC + " (process time)")
-	print("\t" + bcolors.OKGREEN + str(time.time() - t1) + bcolors.ENDC + " (wall time)")
-	print("")
-	r.gSystem.GetProcInfo(info)
-	print("\tmemory in MB : ")
-	print("\t" + bcolors.OKGREEN + str(info.fMemResident/1000.) + bcolors.ENDC + " (resident) ")
-	print("\t" + bcolors.OKGREEN + str(info.fMemVirtual/1000.) + bcolors.ENDC + " (virtual) ")
-	print("-"*20)
-	print("")
-	print("")
-	raw_input("The program will now crash")
+    print("")
+    print("-"*20)
+    print(bcolors.HEADER + "\t All calculations done" + bcolors.ENDC)
+    print("-"*20)
+    print("\t" + time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))
+    print("\truntime in seconds : ")
+    print("\t" + bcolors.OKGREEN + str(time.clock() - t0) + bcolors.ENDC + " (process time)")
+    print("\t" + bcolors.OKGREEN + str(time.time() - t1) + bcolors.ENDC + " (wall time)")
+    print("")
+    r.gSystem.GetProcInfo(info)
+    print("\tmemory in MB : ")
+    print("\t" + bcolors.OKGREEN + str(info.fMemResident/1000.) + bcolors.ENDC + " (resident) ")
+    print("\t" + bcolors.OKGREEN + str(info.fMemVirtual/1000.) + bcolors.ENDC + " (virtual) ")
+    print("-"*20)
+    print("")
+    print("")
+    raw_input("The program will now crash")
 
+## Usage function, prints the usage information
 def Usage():
-	return '%prog [options] CONFIG_FILE'
+    return '%prog [options] CONFIG_FILE'
 
+## Function to do the options input parsing
+#
+# In this function the different possible comand line arguments are defined
+# and read from the user input, they are also checked for sanity.
+# @param[out] options Options object with all user defined input options
+# @param[out] numeric_level Numeric value for the logging level
 def option_parsing():
     import optparse
 
@@ -158,7 +198,7 @@ def option_parsing():
 
     if not options.Signal and not options.Background:
         parser.error( 'Specify to either run on the Signal or on the Background samples!' )
-        
+
     numeric_level = getattr(logging, options.debug.upper(), None)
     if not isinstance(numeric_level, int):
         raise ValueError('Invalid log level: %s' % options.debug)
@@ -167,6 +207,15 @@ def option_parsing():
     logging.basicConfig(filename=options.logfile,level=numeric_level,format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
     return options,numeric_level
 
+## Function to do the config file parsing
+#
+# This functions reads in the necessary config files, for the samples that
+# should be analyzed (mc_cfg), which cross section they have (xs_cfg) and
+# which PDF sets should be used how (pdf_cfg). The config files are also
+# checked for sanity.
+# @param[out] mc_cfg Config for the samples that should be analyzed
+# @param[out] xs_cfg Config for the cross section of the samples
+# @param[out] pdf_cfg Config for the PDF sets that should be used
 def config_parsing(options):
     if options.Signal:
         try:
@@ -208,214 +257,198 @@ def config_parsing(options):
         exit()
     return mc_cfg,xs_cfg,pdf_cfg
 
+## Function that does a control output
+#
+# To check if all program parameters are correct, the most important
+# ones are printed in this function for a quick cross check.
+# @param[in] options Options object with all user defined input options
+# @param[in] mc_cfg Config for the samples that should be analyzed
+# @param[in] pdf_cfg Config for the PDF sets that should be used
+# @param[in] xs_cfg Config for the cross section of the samples
 def control_output(options,mc_cfg,pdf_cfg,xs_cfg):
-	print("\n"+"-"*20)
-	if options.Signal:
-		print("\t Running on "+bcolors.OKGREEN+"Signal"+bcolors.ENDC+" samples")
-		logging.info("Running on Signal samples")
-	else:
-		print("\t Running on "+bcolors.OKGREEN+"Background"+bcolors.ENDC+" samples")
-		logging.info("Running on Background samples")
-	print("-"*20)
-	print("\t PDF sets to be used:")
-	logging.info("PDF sets to be used:")
-	for pdfs in pdf_cfg["PDFs"]:
-		print("\t  -"+bcolors.OKGREEN+pdfs+bcolors.ENDC)
-		logging.info("-"+pdfs)
-	print("-"*20)
-	print("\t MC samples to be used:")
-	logging.info("MC samples to be used:")
-	for sample in mc_cfg["samples"]:
-		print("\t  -"+bcolors.OKGREEN+sample+bcolors.ENDC+"  xs: "+xs_cfg[sample]["xs"])
-		logging.info("-"+sample+"  xs: "+xs_cfg[sample]["xs"])
+    print("\n"+"-"*20)
+    if options.Signal:
+        print("\t Running on "+bcolors.OKGREEN+"Signal"+bcolors.ENDC+" samples")
+        logging.info("Running on Signal samples")
+    else:
+        print("\t Running on "+bcolors.OKGREEN+"Background"+bcolors.ENDC+" samples")
+        logging.info("Running on Background samples")
+    print("-"*20)
+    print("\t PDF sets to be used:")
+    logging.info("PDF sets to be used:")
+    for pdfs in pdf_cfg["PDFs"]:
+        print("\t  -"+bcolors.OKGREEN+pdfs+bcolors.ENDC)
+        logging.info("-"+pdfs)
+    print("-"*20)
+    print("\t MC samples to be used:")
+    logging.info("MC samples to be used:")
+    for sample in mc_cfg["samples"]:
+        print("\t  -"+bcolors.OKGREEN+sample+bcolors.ENDC+"  xs: "+xs_cfg[sample]["xs"])
+        logging.info("-"+sample+"  xs: "+xs_cfg[sample]["xs"])
 
+## Function to get list of event numbers
+#
+# This functions calculates the number of total events that should be
+# analyzed and returns a list of the files that should be anlyzed and
+# a list of events in each file.
+# @param[in] mc_cfg Config for the samples that should be analyzed
+# @param[in] pdf_cfg Config for the PDF sets that should be used
+# @param[in] path Path to the files that should be analyzed
+# @param[out] filelist List of files to be analyzed
+# @param[out] total_events Total number of events
+# @param[out] eventlist List of number of events for each file
 def get_event_number_list(mc_cfg,pdf_cfg,path):
-	filelist = []
-	total_events = 0.
-	eventlist = {}
-	for sg in mc_cfg["samples"]:
-		dummy_events = get_event_number(path+sg+".root",pdf_cfg["Tree"]["tree_name"],pdf_cfg["Tree"]["cut_string"])
-		if dummy_events > 0:
-			total_events += dummy_events
-			eventlist.update({sg:dummy_events})
-			filelist.append(sg)
-	print("-"*20)
-	print("\t Running on "+bcolors.OKGREEN+str(int(total_events))+bcolors.ENDC+" events")
-	print("-"*20+"\n")
-	return filelist,total_events,eventlist
+    filelist = []
+    total_events = 0.
+    eventlist = {}
+    for sg in mc_cfg["samples"]:
+        dummy_events = get_event_number(path+sg+".root",pdf_cfg["Tree"]["tree_name"],pdf_cfg["Tree"]["cut_string"])
+        if dummy_events > 0:
+            total_events += dummy_events
+            eventlist.update({sg:dummy_events})
+            filelist.append(sg)
+    print("-"*20)
+    print("\t Running on "+bcolors.OKGREEN+str(int(total_events))+bcolors.ENDC+" events")
+    print("-"*20+"\n")
+    return filelist,total_events,eventlist
 
+## Function to get the number of events in one file
+#
+# This function reads the number of events from a given file
+# @param[in] file_name Name of the file that should be analyzed
+# @param[in] tree_name Name of the tree in the file
+# @param[in] cut_string Cuts that should be apllied on the tree
+# @param[out] nentries Number of events in the file
 def get_event_number(file_name,tree_name,cut_string):
-	try:
-		tfile = r.TFile(file_name,"READ")
-		tree = tfile.Get(tree_name)
-		dummy_file = r.TFile("tmp/tmpFile2_.root","RECREATE")
-		smallerTree = tree.CopyTree(cut_string)
-		nentries = smallerTree.GetEntries()
-		tfile.Close()
-		dummy_file.Close()
-		return nentries
-	except:
-		print("-"*20)
-		print("\t Can't read "+bcolors.FAIL+file_name+bcolors.ENDC+", skipping it")
-		print("-"*20)
-		return 0
+    try:
+        tfile = r.TFile(file_name,"READ")
+        tree = tfile.Get(tree_name)
+        dummy_file = r.TFile("tmp/tmpFile2_.root","RECREATE")
+        smallerTree = tree.CopyTree(cut_string)
+        nentries = smallerTree.GetEntries()
+        tfile.Close()
+        dummy_file.Close()
+        return nentries
+    except:
+        print("-"*20)
+        print("\t Can't read "+bcolors.FAIL+file_name+bcolors.ENDC+", skipping it")
+        print("-"*20)
+        return 0
 
+## Function to check if there is anythin in a file
+#
+# This function checks if the list of keys for a given file
+# is bigger than zero, to check if the file is usable
+# @param[in] file_name Name of the file to be checked
+# @param[out] bool Either true (good file) or False (bad file)
 def check_file(file_name):
-	tfile = r.TFile(file_name,"READ")
-	hists = tfile.GetListOfKeys().GetSize()
-	if hists <= 1:
-		print("-"*20)
-		print("\t Output of "+bcolors.FAIL+file_name+bcolors.ENDC+" is not okay, will not be used for PDF calculation")
-		print("-"*20)
-		return False
-	else:
-		return True
+    tfile = r.TFile(file_name,"READ")
+    hists = tfile.GetListOfKeys().GetSize()
+    if hists <= 1:
+        print("-"*20)
+        print("\t Output of "+bcolors.FAIL+file_name+bcolors.ENDC+" is not okay, will not be used for PDF calculation")
+        print("-"*20)
+        return False
+    else:
+        return True
 
+## Function to check all output files
+#
+# This function calls check_file on every outputfile that should
+# be produced. If the PDF calculation is done on background samples
+# the output is also merged.
+# @param[in] options Options object with all user defined input options
+# @param[in] run_samples List of samples that were analyzed
+# @param[in] pdf_cfg Config for the PDF sets that should be used
+# @param[out] run_samples List of samples that were analyzed and pass the check
 def final_file_check(options,run_samples,pdf_cfg):
-	print("-"*20)
-	print("\t Now checking all output files")
-	print("-"*20+"\n")
-	if options.Signal:
-		for sg in run_samples:
-			if not check_file(sg):
-				run_samples.remove(sg)
-	else:
-		for sg in run_samples:
-			if not check_file(sg):
-				run_samples.remove(sg)
-		print("-"*20)
-		print("\t Now merging all background files")
-		print("-"*20+"\n")
-		command= "hadd -f9 "+pdf_cfg["general"]["temp_path"]+"allMCs.root "
-		for i in run_samples:
-			command += " " + i
-		p = subprocess.Popen(command,shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
-		out, err = p.communicate()
-		logging.debug(out)
-		logging.debug(err)
-		run_samples = [pdf_cfg["general"]["temp_path"]+"allMCs.root"]
-	return run_samples
+    print("-"*20)
+    print("\t Now checking all output files")
+    print("-"*20+"\n")
+    if options.Signal:
+        for sg in run_samples:
+            if not check_file(sg):
+                run_samples.remove(sg)
+    else:
+        for sg in run_samples:
+            if not check_file(sg):
+                run_samples.remove(sg)
+        print("-"*20)
+        print("\t Now merging all background files")
+        print("-"*20+"\n")
+        command= "hadd -f9 "+pdf_cfg["general"]["temp_path"]+"allMCs.root "
+        for i in run_samples:
+            command += " " + i
+        p = subprocess.Popen(command,shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+        out, err = p.communicate()
+        logging.debug(out)
+        logging.debug(err)
+        run_samples = [pdf_cfg["general"]["temp_path"]+"allMCs.root"]
+    return run_samples
 
+## Function to convert the parameters for the C++ library
+#
+# To have all parameters readable by the C++ library functions,
+# they need to be converted, this is done by this function.
+# @param[in] mc_cfg Config for the samples that should be analyzed
+# @param[in] pdf_cfg Config for the PDF sets that should be used
+# @param[out] paras Dictionary of the converted parameters
 def make_c_parameters(mc_cfg,pdf_cfg):
-	paras = {}
-	logging.info('preparing paramters for C++ functions ...')
-	# Get the path of the MC samples:
-	path = mc_cfg["general"]["path"]
-	paras.update({"path":path})
-	logging.debug('path: %s',path)
-	# Get the name of the tree branches:
-	c_branches = (c_char_p * 7)()
-	logging.debug('branches: %s, %s, %s, %s, %s, %s, %s',
-	pdf_cfg["Tree"]["b_pdf_scale"],
-	pdf_cfg["Tree"]["b_pdf_id1"],
-	pdf_cfg["Tree"]["b_pdf_id2"],
-	pdf_cfg["Tree"]["b_pdf_x1"],
-	pdf_cfg["Tree"]["b_pdf_x2"],
-	pdf_cfg["Tree"]["b_observe"],
-	pdf_cfg["Tree"]["b_weight"])
-	paras.update({"branches":c_branches})
-	c_branches[:] = [pdf_cfg["Tree"]["b_pdf_scale"],
-	pdf_cfg["Tree"]["b_pdf_id1"],
-	pdf_cfg["Tree"]["b_pdf_id2"],
-	pdf_cfg["Tree"]["b_pdf_x1"],
-	pdf_cfg["Tree"]["b_pdf_x2"],
-	pdf_cfg["Tree"]["b_observe"],
-	pdf_cfg["Tree"]["b_weight"]]
-	# Get the names of the PDF sets:
-	n_pdf_sets = 0
-	PDFsets = []
-	for i_pdf in pdf_cfg["PDFs"]:
-		n_pdf_sets+=1
-		PDFsets.append(i_pdf)
-		logging.debug('append pdf set: %s',i_pdf)
-	logging.debug('number of pdf sets: %i',n_pdf_sets)
-	c_PDFsets = (c_char_p * n_pdf_sets)()
-	c_PDFsets[:] = PDFsets
-	paras.update({"PDFSets":c_PDFsets})
-	paras.update({"n_pdfs":c_int(n_pdf_sets)})
-	# Get the path of the PDF sets
-	PDFPath = pdf_cfg["general"]["PDFpath"]
-	paras.update({"PDF_path":create_string_buffer(PDFPath)})
-	logging.debug('pdf_path: %s',PDFPath)
-	# Get the histogram binning
-	dummy_binning = []
-	logging.debug('binning:')
-	for i in mc_cfg["general"]["binning"]:
-		dummy_binning.append(float(i))
-		logging.debug(i)
-	c_binning = (c_double * len(dummy_binning))()
-	c_binning[:] = dummy_binning
-	paras.update({"n_bins":c_int(len(dummy_binning))})
-	paras.update({"binning":c_binning})
-	paras.update({"tree_name":create_string_buffer(pdf_cfg["Tree"]["tree_name"])})
-	paras.update({"cut_string":create_string_buffer(pdf_cfg["Tree"]["cut_string"])})
-	paras.update({"lumi":c_double(float(mc_cfg["general"]["lumi"]))})
+    paras = {}
+    logging.info('preparing paramters for C++ functions ...')
+    # Get the path of the MC samples:
+    path = mc_cfg["general"]["path"]
+    paras.update({"path":path})
+    logging.debug('path: %s',path)
+    # Get the name of the tree branches:
+    c_branches = (c_char_p * 7)()
+    logging.debug('branches: %s, %s, %s, %s, %s, %s, %s',
+    pdf_cfg["Tree"]["b_pdf_scale"],
+    pdf_cfg["Tree"]["b_pdf_id1"],
+    pdf_cfg["Tree"]["b_pdf_id2"],
+    pdf_cfg["Tree"]["b_pdf_x1"],
+    pdf_cfg["Tree"]["b_pdf_x2"],
+    pdf_cfg["Tree"]["b_observe"],
+    pdf_cfg["Tree"]["b_weight"])
+    paras.update({"branches":c_branches})
+    c_branches[:] = [pdf_cfg["Tree"]["b_pdf_scale"],
+    pdf_cfg["Tree"]["b_pdf_id1"],
+    pdf_cfg["Tree"]["b_pdf_id2"],
+    pdf_cfg["Tree"]["b_pdf_x1"],
+    pdf_cfg["Tree"]["b_pdf_x2"],
+    pdf_cfg["Tree"]["b_observe"],
+    pdf_cfg["Tree"]["b_weight"]]
+    # Get the names of the PDF sets:
+    n_pdf_sets = 0
+    PDFsets = []
+    for i_pdf in pdf_cfg["PDFs"]:
+        n_pdf_sets+=1
+        PDFsets.append(i_pdf)
+        logging.debug('append pdf set: %s',i_pdf)
+    logging.debug('number of pdf sets: %i',n_pdf_sets)
+    c_PDFsets = (c_char_p * n_pdf_sets)()
+    c_PDFsets[:] = PDFsets
+    paras.update({"PDFSets":c_PDFsets})
+    paras.update({"n_pdfs":c_int(n_pdf_sets)})
+    # Get the path of the PDF sets
+    PDFPath = pdf_cfg["general"]["PDFpath"]
+    paras.update({"PDF_path":create_string_buffer(PDFPath)})
+    logging.debug('pdf_path: %s',PDFPath)
+    # Get the histogram binning
+    dummy_binning = []
+    logging.debug('binning:')
+    for i in mc_cfg["general"]["binning"]:
+        dummy_binning.append(float(i))
+        logging.debug(i)
+    c_binning = (c_double * len(dummy_binning))()
+    c_binning[:] = dummy_binning
+    paras.update({"n_bins":c_int(len(dummy_binning))})
+    paras.update({"binning":c_binning})
+    paras.update({"tree_name":create_string_buffer(pdf_cfg["Tree"]["tree_name"])})
+    paras.update({"cut_string":create_string_buffer(pdf_cfg["Tree"]["cut_string"])})
+    paras.update({"lumi":c_double(float(mc_cfg["general"]["lumi"]))})
 
-	logging.debug('number of bins: %i',len(dummy_binning))
-	logging.info('done')
-	return paras
-
-def helper():
-	print(bcolors.OKBLUE+"#"*100,"\n","#"*49+bcolors.FAIL+"#"+bcolors.OKBLUE+"#"*50)
-	print("#"*49+bcolors.FAIL+"#"*3+bcolors.OKBLUE+"#"*48)
-	print("#"*48+bcolors.FAIL+"#"*5+bcolors.OKBLUE+"#"*47)
-	print("#"*100)
-	print("#"*46+bcolors.FAIL+"#"*9+bcolors.OKBLUE+"#"*45)
-	print("#"*45+bcolors.FAIL+"#"*11+bcolors.OKBLUE+"#"*44)
-	print("#"*100)
-	print("#"*43+bcolors.FAIL+"#"*15+bcolors.OKBLUE+"#"*42)
-	print("#"*42+bcolors.FAIL+"#"*17+bcolors.OKBLUE+"#"*41)
-	print("#"*100)
-	print("#"*40+bcolors.FAIL+"#"*21+bcolors.OKBLUE+"#"*39)
-	print("#"*39+bcolors.FAIL+"#"*23+bcolors.OKBLUE+"#"*38)
-	print("#"*100)
-	print("#"*38+bcolors.FAIL+"#"*25+bcolors.OKBLUE+"#"*37)
-	print("#"*37+bcolors.FAIL+"#"*27+bcolors.OKBLUE+"#"*36)
-	print("#"*100)
-	print("#"*35+bcolors.FAIL+"#"+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*20+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"+bcolors.OKBLUE+"#"*35)
-	print("#"*34+bcolors.FAIL+"#"*3+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*18+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*3+bcolors.OKBLUE+"#"*34)
-	print("#"*100)
-	print("#"*32+bcolors.FAIL+"#"*7+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*14+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*7+bcolors.OKBLUE+"#"*32)
-	print("#"*31+bcolors.FAIL+"#"*9+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*12+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*9+bcolors.OKBLUE+"#"*31)
-	print("#"*100)
-	print("#"*30+bcolors.FAIL+"#"*11+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*9+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*13+bcolors.OKBLUE+"#"*29)
-	print("#"*29+bcolors.FAIL+"#"*13+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*7+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*15+bcolors.OKBLUE+"#"*28)
-	print("#"*100)
-	print("#"*27+bcolors.FAIL+"#"*17+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*4+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*17+bcolors.OKBLUE+"#"*27)
-	print("#"*26+bcolors.FAIL+"#"*19+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"++"+bcolors.OKBLUE+"#"*4+bcolors.FAIL+"#"*19+bcolors.OKBLUE+"#"*26)
-	print("#"*100)
-	print("#"*24+bcolors.FAIL+"#"*23+bcolors.OKBLUE+"#"*7+bcolors.FAIL+"#"*23+bcolors.OKBLUE+"#"*23)
-	print("#"*23+bcolors.FAIL+"#"*25+bcolors.OKBLUE+"#"*5+bcolors.FAIL+"#"*25+bcolors.OKBLUE+"#"*22)
-	print("#"*100)
-	print("#"*22+bcolors.FAIL+"#"*27+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*26+bcolors.OKBLUE+"#"*22)
-	print("#"*21+bcolors.FAIL+"#"*28+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*28+bcolors.OKBLUE+"#"*20)
-	print("#"*100)
-	print("#"*19+bcolors.FAIL+"#"*30+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*30+bcolors.OKBLUE+"#"*18)
-	print("#"*18+bcolors.FAIL+"#"*31+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*31+bcolors.OKBLUE+"#"*17)
-	print("#"*100)
-	print("#"*16+bcolors.FAIL+"#"*33+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*33+bcolors.OKBLUE+"#"*15)
-	print("#"*15+bcolors.FAIL+"#"*34+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*34+bcolors.OKBLUE+"#"*14)
-	print("#"*100)
-	print("#"*14+bcolors.FAIL+"#"*35+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*35+bcolors.OKBLUE+"#"*13)
-	print("#"*13+bcolors.FAIL+"#"*36+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*37+bcolors.OKBLUE+"#"*11)
-	print("#"*100)
-	print("#"*11+bcolors.FAIL+"#"*38+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*39+bcolors.OKBLUE+"#"*9)
-	print("#"*10+bcolors.FAIL+"#"*39+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*40+bcolors.OKBLUE+"#"*8)
-	print("#"*100)
-	print("#"*8+bcolors.FAIL+"#"*41+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*41+bcolors.OKBLUE+"#"*7)
-	print("#"*7+bcolors.FAIL+"#"*42+bcolors.OKBLUE+"#"*3+bcolors.FAIL+"#"*42+bcolors.OKBLUE+"#"*6)
-	print("#"*100)
-	print("#"*100)
-	print("#"*9+bcolors.WHITE+"#"*13+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*5+bcolors.WHITE+"#"*7+bcolors.OKBLUE+"#"*8+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*6+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*3+bcolors.WHITE+"#"*12+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"*7)
-	print("#"*8+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*3+bcolors.WHITE+"#"*9+bcolors.OKBLUE+"#"*8+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*5+bcolors.OKBLUE+"#"*5+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*13+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"*7)
-	print("#"*8+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*4+bcolors.OKBLUE+"#"*3+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*8+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*6+bcolors.OKBLUE+"#"*4+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"*7)
-	print("#"*8+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*12+bcolors.WHITE+"#"*8+bcolors.OKBLUE+"#"*4+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*8+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*18+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*12)
-	print("#"*8+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*7+bcolors.OKBLUE+"#"*6+bcolors.WHITE+"#"*13+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*5+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"*7+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*12)
-	print("#"*8+bcolors.WHITE+"#"*22+bcolors.OKBLUE+"#"*7+bcolors.WHITE+"#"*12+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*8+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"*7+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*12)
-	print("#"*20+bcolors.WHITE+"#"*12+bcolors.OKBLUE+"#"*14+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*3+bcolors.WHITE+"#"*7+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*18+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*12)
-	print("#"*8+bcolors.WHITE+"#"*18+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*5+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*4+bcolors.WHITE+"#"*6+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"*7+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*14)
-	print("#"*8+bcolors.WHITE+"#"*14+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*4+bcolors.WHITE+"#"*4+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*13+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*5+bcolors.WHITE+"#"*5+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*13+bcolors.OKBLUE+"#"*7+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*12)
-	print("#"*8+bcolors.WHITE+"#"*13+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*6+bcolors.WHITE+"#"*5+bcolors.OKBLUE+"#"+bcolors.WHITE+"#"*10+bcolors.OKBLUE+"##"+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*7+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*3+bcolors.WHITE+"#"*12+bcolors.OKBLUE+"#"*7+bcolors.WHITE+"#"*3+bcolors.OKBLUE+"#"*12)
-	print("#"*100)
-	print("#"*100)
-	print("#"*100+bcolors.ENDC)
+    logging.debug('number of bins: %i',len(dummy_binning))
+    logging.info('done')
+    return paras
+    
