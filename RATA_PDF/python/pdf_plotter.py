@@ -1,3 +1,9 @@
+##@package pdf_plotter
+#Small script to plot the uncertainty bands calculated with RATA_PDF
+#
+#This script can be used to plot the uncertainty bands of different
+#PDF sets which were calculated with the RATA_PDF framework.
+
 #!/usr/bin/env python
 import ROOT as r
 from array import array
@@ -186,286 +192,249 @@ def set_palette(name, ncontours=999):
     r.TColor.CreateGradientColorTable(npoints, s, r, g, b, ncontours)
     r.gStyle.SetNumberContours(ncontours)
 
+## Function to read a histogram from a given file in the memory
+#
+# In this function the .root file is opened and the histogram
+# is read in the memory. At the moment also a rebinning with
+# the factor 20 is done.
+# @param[in] file String of the file name from which the histogram should be read
+# @param[in] hist String of the histogram name to be read
+# @param[out] ohist TH1F histogram that was read
 def reader(file,hist):
-  infile = r.TFile(file,"READ")
-  ohist = r.TH1F()
-  ohist = infile.Get(hist)
-  ohist.SetDirectory(0)
-  infile.Close()
-  ohist.Rebin(20)
-  #ohist.Scale(1/20.)
-  return ohist
+    infile = r.TFile(file,"READ")
+    ohist = r.TH1F()
+    ohist = infile.Get(hist)
+    ohist.SetDirectory(0)
+    infile.Close()
+    ohist.Rebin(20)
+    #ohist.Scale(1/20.)
+    return ohist
 
+## Main function
+#
+# In this function the different histograms are read added and plotted
+# together.
 def main():
-  h_main = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_CT10_mean")
-  h_ct_up = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_CT10_up")
-  h_ct_down = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_CT10_down")
-  h_mstw_up = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_MSTW_up")
-  h_mstw_down = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_MSTW_down")
-  h_nnpdf_up = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_NNPDF_up")
-  h_nnpdf_down = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_NNPDF_down")
+    ## Read in the different necessary histograms
+    h_main = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_CT10_mean")
+    h_ct_up = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_CT10_up")
+    h_ct_down = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_CT10_down")
+    h_mstw_up = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_MSTW_up")
+    h_mstw_down = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_MSTW_down")
+    h_nnpdf_up = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_NNPDF_up")
+    h_nnpdf_down = reader("/user/erdweg/out/new_res/WprimeToMuNu_M-2000.root","results/h1_mtsys_pdf_NNPDF_down")
 
-  #h_main = reader("test.root","CT10_mean")
-  #h_ct_up = reader("test.root","CT10_up")
-  #h_ct_down = reader("test.root","CT10_down")
-  #h_mstw_up = reader("test.root","MSTW_up")
-  #h_mstw_down = reader("test.root","MSTW_down")
-  #h_nnpdf_up = reader("test.root","NNPDF_up")
-  #h_nnpdf_down = reader("test.root","NNPDF_down")
+    ## Calculate the relative uncertainty bands for the CT pdf set
+    #
+    # Calculate the difference between the normal and reweighted histograms
+    # and translate them into a relative uncertainty
+    h_ct_up.Add(h_main,-1)
+    h_ct_up.Divide(h_main)
+    h_ct_up.SetLineColor(r.kGreen)
+    h_ct_up.SetLineStyle(1)
+    h_ct_up.SetLineWidth(1)
 
-  h_ct_up.Add(h_main,-1)
-  h_ct_up.Divide(h_main)
-  h_ct_up.SetLineColor(r.kGreen)
-  h_ct_up.SetLineStyle(1)
-  h_ct_up.SetLineWidth(1)
+    h_ct_down.Add(h_main,-1)
+    h_ct_down.Divide(h_main)
+    h_ct_down.SetLineColor(r.kGreen)
+    h_ct_down.SetLineStyle(1)
+    h_ct_down.SetLineWidth(1)
 
+    h_ct_mean = h_ct_down.Clone("h_ct_mean")
+    h_ct_mean.SetLineColor(r.kGreen)
+    h_ct_mean.SetLineStyle(2)
+    h_ct_mean.SetLineWidth(1)
 
-  h_ct_down.Add(h_main,-1)
-  h_ct_down.Divide(h_main)
-  h_ct_down.SetLineColor(r.kGreen)
-  h_ct_down.SetLineStyle(1)
-  h_ct_down.SetLineWidth(1)
+    ## Calculate the mean distributions for the CT pdf set
+    for i in range(1,h_ct_down.GetNbinsX()):
+        h_ct_mean.SetBinContent(i,(h_ct_down.GetBinContent(i) + h_ct_up.GetBinContent(i))/2.)
+    g_ct = r.TGraph(2*h_ct_up.GetNbinsX())
+    n_bin = 1
+    for i in range(1,h_ct_up.GetNbinsX()):
+        g_ct.SetPoint(i,h_ct_up.GetBinCenter(i),h_ct_up.GetBinContent(i))
+        n_bin = i
+    for i in range(1,h_ct_down.GetNbinsX()):
+        g_ct.SetPoint(i+n_bin,h_ct_down.GetBinCenter(h_ct_down.GetNbinsX()+1-i),h_ct_down.GetBinContent(h_ct_down.GetNbinsX()+1-i))
 
-  h_ct_mean = h_ct_down.Clone("h_ct_mean")
-  h_ct_mean.SetLineColor(r.kGreen)
-  h_ct_mean.SetLineStyle(2)
-  h_ct_mean.SetLineWidth(1)
-  for i in range(1,h_ct_down.GetNbinsX()):
-    #if h_ct_down.GetBinContent(i) < -0.3 or h_ct_down.GetBinContent(i) > 0.3 or h_ct_up.GetBinContent(i) > 0.3 or h_ct_up.GetBinContent(i) < -0.3:
-      #h_ct_mean.SetBinContent(i,h_ct_mean.GetBinContent(i-1))
-    #else:
-    h_ct_mean.SetBinContent(i,(h_ct_down.GetBinContent(i) + h_ct_up.GetBinContent(i))/2.)
+    ## Set the plotting style for the CT pdf set
+    g_ct.SetFillColor(r.kGreen)
+    g_ct.SetFillStyle(3002)
+    g_ct.SetLineColor(r.kGreen)
+    g_ct.SetLineWidth(1)
 
-  g_ct = r.TGraph(2*h_ct_up.GetNbinsX())
-  n_bin = 1
-  for i in range(1,h_ct_up.GetNbinsX()):
-    #if h_ct_up.GetBinContent(i) > 0.3 or h_ct_up.GetBinContent(i) < -0.3:
-      #if h_ct_up.GetBinContent(i-1) > 0.3 or h_ct_up.GetBinContent(i-1) < -0.3:
-        #g_ct.SetPoint(i,h_ct_up.GetBinCenter(i),h_ct_up.GetBinContent(i-2))
-        #h_ct_up.SetBinContent(i,h_ct_up.GetBinContent(i-2))
-      #else:
-        #g_ct.SetPoint(i,h_ct_up.GetBinCenter(i),h_ct_up.GetBinContent(i-1))
-        #h_ct_up.SetBinContent(i,h_ct_up.GetBinContent(i-1))
-    #else:
-    g_ct.SetPoint(i,h_ct_up.GetBinCenter(i),h_ct_up.GetBinContent(i))
-    n_bin = i
-  for i in range(1,h_ct_down.GetNbinsX()):
-    #if h_ct_down.GetBinContent(h_ct_down.GetNbinsX()+1-i) < -0.3 or h_ct_down.GetBinContent(h_ct_down.GetNbinsX()+1-i) > 0.3:
-      #if h_ct_down.GetBinContent(h_ct_down.GetNbinsX()-i) < -0.3 or h_ct_down.GetBinContent(h_ct_down.GetNbinsX()-i) > 0.3:
-        #g_ct.SetPoint(i+n_bin,h_ct_down.GetBinCenter(h_ct_down.GetNbinsX()+1-i),h_ct_down.GetBinContent(h_ct_down.GetNbinsX()-i-1))
-        #h_ct_down.SetBinContent(h_ct_down.GetNbinsX()+1-i,h_ct_down.GetBinContent(h_ct_down.GetNbinsX()-i-1))
-      #else:
-        #g_ct.SetPoint(i+n_bin,h_ct_down.GetBinCenter(h_ct_down.GetNbinsX()+1-i),h_ct_down.GetBinContent(h_ct_down.GetNbinsX()-i))
-        #h_ct_down.SetBinContent(h_ct_down.GetNbinsX()+1-i,h_ct_down.GetBinContent(h_ct_down.GetNbinsX()-i))
-    #else:
-    g_ct.SetPoint(i+n_bin,h_ct_down.GetBinCenter(h_ct_down.GetNbinsX()+1-i),h_ct_down.GetBinContent(h_ct_down.GetNbinsX()+1-i))
-  g_ct.SetFillColor(r.kGreen)
-  g_ct.SetFillStyle(3002)
-  g_ct.SetLineColor(r.kGreen)
-  g_ct.SetLineWidth(1)
+    ## Calculate the relative uncertainty bands for the MSTW pdf set
+    #
+    # Calculate the difference between the normal and reweighted histograms
+    # and translate them into a relative uncertainty
+    h_mstw_up.Add(h_main,-1)
+    h_mstw_up.Divide(h_main)
+    h_mstw_up.SetLineColor(r.kBlue)
+    h_mstw_up.SetLineStyle(1)
+    h_mstw_up.SetLineWidth(1)
 
-  h_mstw_up.Add(h_main,-1)
-  h_mstw_up.Divide(h_main)
-  h_mstw_up.SetLineColor(r.kBlue)
-  h_mstw_up.SetLineStyle(1)
-  h_mstw_up.SetLineWidth(1)
+    h_mstw_down.Add(h_main,-1)
+    h_mstw_down.Divide(h_main)
+    h_mstw_down.SetLineColor(r.kBlue)
+    h_mstw_down.SetLineStyle(1)
+    h_mstw_down.SetLineWidth(1)
 
-  h_mstw_down.Add(h_main,-1)
-  h_mstw_down.Divide(h_main)
-  h_mstw_down.SetLineColor(r.kBlue)
-  h_mstw_down.SetLineStyle(1)
-  h_mstw_down.SetLineWidth(1)
+    h_mstw_mean = h_mstw_up.Clone("h_mstw_mean")
+    h_mstw_mean.SetLineColor(r.kBlue)
+    h_mstw_mean.SetLineStyle(2)
+    h_mstw_mean.SetLineWidth(1)
 
-  h_mstw_mean = h_mstw_up.Clone("h_mstw_mean")
-  h_mstw_mean.SetLineColor(r.kBlue)
-  h_mstw_mean.SetLineStyle(2)
-  h_mstw_mean.SetLineWidth(1)
-  for i in range(1,h_mstw_down.GetNbinsX()):
-    #if h_mstw_down.GetBinContent(i) < -0.3 or h_mstw_down.GetBinContent(i) > 0.3 or h_mstw_up.GetBinContent(i) > 0.3 or h_mstw_up.GetBinContent(i) < -0.3:
-      #h_mstw_mean.SetBinContent(i,h_mstw_mean.GetBinContent(i-1))
-    #else:
-    h_mstw_mean.SetBinContent(i,(h_mstw_down.GetBinContent(i) + h_mstw_up.GetBinContent(i))/2.)
+    ## Calculate the mean distributions for the MSTW pdf set
+    for i in range(1,h_mstw_down.GetNbinsX()):
+        h_mstw_mean.SetBinContent(i,(h_mstw_down.GetBinContent(i) + h_mstw_up.GetBinContent(i))/2.)
+    g_mstw = r.TGraph(2*h_mstw_up.GetNbinsX())
+    n_bin = 1
+    for i in range(1,h_mstw_up.GetNbinsX()):
+        g_mstw.SetPoint(i,h_mstw_up.GetBinCenter(i),h_mstw_up.GetBinContent(i))
+        n_bin = i
+    for i in range(1,h_mstw_down.GetNbinsX()):
+        g_mstw.SetPoint(i+n_bin,h_mstw_down.GetBinCenter(h_mstw_down.GetNbinsX()+1-i),h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()+1-i))
 
-  g_mstw = r.TGraph(2*h_mstw_up.GetNbinsX())
-  n_bin = 1
-  for i in range(1,h_mstw_up.GetNbinsX()):
-    #if h_mstw_up.GetBinContent(i) > 0.3 or h_mstw_up.GetBinContent(i) < -0.3:
-      #if h_mstw_up.GetBinContent(i-1) > 0.3 or h_mstw_up.GetBinContent(i-1) < -0.3:
-        #g_mstw.SetPoint(i,h_mstw_up.GetBinCenter(i),h_mstw_up.GetBinContent(i-2))
-        #h_mstw_up.SetBinContent(i,h_mstw_up.GetBinContent(i-2))
-      #else:
-        #g_mstw.SetPoint(i,h_mstw_up.GetBinCenter(i),h_mstw_up.GetBinContent(i-1))
-        #h_mstw_up.SetBinContent(i,h_mstw_up.GetBinContent(i-1))
-    #else:
-    g_mstw.SetPoint(i,h_mstw_up.GetBinCenter(i),h_mstw_up.GetBinContent(i))
-    n_bin = i
-  for i in range(1,h_mstw_down.GetNbinsX()):
-    #if h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()+1-i) < -0.3 or h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()+1-i) > 0.3:
-      #if h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()-i) < -0.3 or h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()-i) > 0.3:
-        #g_mstw.SetPoint(i+n_bin,h_mstw_down.GetBinCenter(h_mstw_down.GetNbinsX()+1-i),h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()-i-1))
-        #h_mstw_down.SetBinContent(h_mstw_down.GetNbinsX()+1-i,h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()-i-1))
-      #else:
-        #g_mstw.SetPoint(i+n_bin,h_mstw_down.GetBinCenter(h_mstw_down.GetNbinsX()+1-i),h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()-i))
-        #h_mstw_down.SetBinContent(h_mstw_down.GetNbinsX()+1-i,h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()-i))
-    #else:
-    g_mstw.SetPoint(i+n_bin,h_mstw_down.GetBinCenter(h_mstw_down.GetNbinsX()+1-i),h_mstw_down.GetBinContent(h_mstw_down.GetNbinsX()+1-i))
-  g_mstw.SetFillColor(r.kBlue)
-  g_mstw.SetFillStyle(3002)
-  g_mstw.SetLineColor(r.kBlue)
-  g_mstw.SetLineWidth(1)
+    ## Set the plotting style for the MSTW pdf set
+    g_mstw.SetFillColor(r.kBlue)
+    g_mstw.SetFillStyle(3002)
+    g_mstw.SetLineColor(r.kBlue)
+    g_mstw.SetLineWidth(1)
 
-  h_nnpdf_up.Add(h_main,-1)
-  h_nnpdf_up.Divide(h_main)
-  h_nnpdf_up.SetLineColor(r.kTeal)
-  h_nnpdf_up.SetLineStyle(1)
-  h_nnpdf_up.SetLineWidth(1)
+    ## Calculate the relative uncertainty bands for the NNPDF pdf set
+    #
+    # Calculate the difference between the normal and reweighted histograms
+    # and translate them into a relative uncertainty
+    h_nnpdf_up.Add(h_main,-1)
+    h_nnpdf_up.Divide(h_main)
+    h_nnpdf_up.SetLineColor(r.kTeal)
+    h_nnpdf_up.SetLineStyle(1)
+    h_nnpdf_up.SetLineWidth(1)
 
-  h_nnpdf_down.Add(h_main,-1)
-  h_nnpdf_down.Divide(h_main)
-  h_nnpdf_down.SetLineColor(r.kTeal)
-  h_nnpdf_down.SetLineStyle(1)
-  h_nnpdf_down.SetLineWidth(1)
+    h_nnpdf_down.Add(h_main,-1)
+    h_nnpdf_down.Divide(h_main)
+    h_nnpdf_down.SetLineColor(r.kTeal)
+    h_nnpdf_down.SetLineStyle(1)
+    h_nnpdf_down.SetLineWidth(1)
 
-  h_nnpdf_mean = h_nnpdf_up.Clone("h_nnpdf_mean")
-  h_nnpdf_mean.SetLineColor(r.kTeal)
-  h_nnpdf_mean.SetLineStyle(2)
-  h_nnpdf_mean.SetLineWidth(1)
-  for i in range(1,h_nnpdf_up.GetNbinsX()):
-    #if h_nnpdf_down.GetBinContent(i) < -0.3 or h_nnpdf_down.GetBinContent(i) > 0.3 or h_nnpdf_up.GetBinContent(i) > 0.3 or h_nnpdf_up.GetBinContent(i) < -0.3:
-      #h_nnpdf_mean.SetBinContent(i,h_nnpdf_mean.GetBinContent(i-1))
-    #else:
-    h_nnpdf_mean.SetBinContent(i,(h_nnpdf_down.GetBinContent(i) + h_nnpdf_up.GetBinContent(i))/2.)
+    h_nnpdf_mean = h_nnpdf_up.Clone("h_nnpdf_mean")
+    h_nnpdf_mean.SetLineColor(r.kTeal)
+    h_nnpdf_mean.SetLineStyle(2)
+    h_nnpdf_mean.SetLineWidth(1)
 
-  g_nnpdf = r.TGraph(2*h_nnpdf_up.GetNbinsX())
-  n_bin = 1
-  for i in range(1,h_nnpdf_up.GetNbinsX()):
-    #if h_nnpdf_up.GetBinContent(i) > 0.3 or h_nnpdf_up.GetBinContent(i) < -0.3:
-      #if h_nnpdf_up.GetBinContent(i-1) > 0.3 or h_nnpdf_up.GetBinContent(i-1) < -0.3:
-        #g_nnpdf.SetPoint(i,h_nnpdf_up.GetBinCenter(i),h_nnpdf_up.GetBinContent(i-2))
-        #h_nnpdf_up.SetBinContent(i,h_nnpdf_up.GetBinContent(i-2))
-      #else:
-        #g_nnpdf.SetPoint(i,h_nnpdf_up.GetBinCenter(i),h_nnpdf_up.GetBinContent(i-1))
-        #h_nnpdf_up.SetBinContent(i,h_nnpdf_up.GetBinContent(i-1))
-    #else:
-    g_nnpdf.SetPoint(i,h_nnpdf_up.GetBinCenter(i),h_nnpdf_up.GetBinContent(i))
-    n_bin = i
-  for i in range(1,h_nnpdf_down.GetNbinsX()):
-    #if h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()+1-i) < -0.3 or h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()+1-i) > 0.3:
-      #if h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()-i) < -0.3 or h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()-i) > 0.3:
-        #g_nnpdf.SetPoint(i+n_bin,h_nnpdf_down.GetBinCenter(h_nnpdf_down.GetNbinsX()+1-i),h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()-i-1))
-        #h_nnpdf_down.SetBinContent(h_nnpdf_down.GetNbinsX()+1-i,h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()-i-1))
-      #else:
-        #g_nnpdf.SetPoint(i+n_bin,h_nnpdf_down.GetBinCenter(h_nnpdf_down.GetNbinsX()+1-i),h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()-i))
-        #h_nnpdf_down.SetBinContent(h_nnpdf_down.GetNbinsX()+1-i,h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()-i))
-    #else:
-    g_nnpdf.SetPoint(i+n_bin,h_nnpdf_down.GetBinCenter(h_nnpdf_down.GetNbinsX()+1-i),h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()+1-i))
-  g_nnpdf.SetFillColor(r.kTeal)
-  g_nnpdf.SetFillStyle(3002)
-  g_nnpdf.SetLineColor(r.kTeal)
-  g_nnpdf.SetLineWidth(1)
+    ## Calculate the mean distributions for the NNPDF pdf set
+    for i in range(1,h_nnpdf_up.GetNbinsX()):
+        h_nnpdf_mean.SetBinContent(i,(h_nnpdf_down.GetBinContent(i) + h_nnpdf_up.GetBinContent(i))/2.)
+    g_nnpdf = r.TGraph(2*h_nnpdf_up.GetNbinsX())
+    n_bin = 1
+    for i in range(1,h_nnpdf_up.GetNbinsX()):
+        g_nnpdf.SetPoint(i,h_nnpdf_up.GetBinCenter(i),h_nnpdf_up.GetBinContent(i))
+        n_bin = i
+    for i in range(1,h_nnpdf_down.GetNbinsX()):
+        g_nnpdf.SetPoint(i+n_bin,h_nnpdf_down.GetBinCenter(h_nnpdf_down.GetNbinsX()+1-i),h_nnpdf_down.GetBinContent(h_nnpdf_down.GetNbinsX()+1-i))
 
-  h_main.Add(h_main,-1)
-  h_main.SetLineColor(r.kBlack)
-  h_main.SetLineStyle(1)
-  h_main.SetLineWidth(1)
-  
-  U = h_main.Clone("U")
-  U.SetLineColor(r.kRed)
-  U.SetLineStyle(1)
-  U.SetLineWidth(2)
-  L = h_main.Clone("L")
-  L.SetLineColor(r.kRed)
-  L.SetLineStyle(1)
-  L.SetLineWidth(2)
-  M = h_main.Clone("M")
-  M.SetLineColor(r.kRed)
-  M.SetLineStyle(2)
-  M.SetLineWidth(2)
-  for i in range(1,h_main.GetNbinsX()):
-    #if h_ct_up.GetBinContent(i) > 0.3 or h_ct_up.GetBinContent(i) < -0.3:
-      #U.SetBinContent(i,max(h_ct_up.GetBinContent(i-1),h_mstw_up.GetBinContent(i),h_nnpdf_up.GetBinContent(i)))
-    #elif h_mstw_up.GetBinContent(i) > 0.3 or h_mstw_up.GetBinContent(i) < -0.3:
-      #U.SetBinContent(i,max(h_ct_up.GetBinContent(i),h_mstw_up.GetBinContent(i-1),h_nnpdf_up.GetBinContent(i)))
-    #elif h_nnpdf_up.GetBinContent(i) > 0.3 or h_nnpdf_up.GetBinContent(i) < -0.3:
-      #U.SetBinContent(i,max(h_ct_up.GetBinContent(i),h_mstw_up.GetBinContent(i),h_nnpdf_up.GetBinContent(i-1)))
-    #elif max(h_ct_up.GetBinContent(i),h_mstw_up.GetBinContent(i),h_nnpdf_up.GetBinContent(i)) > 0.3 or max(h_ct_up.GetBinContent(i),h_mstw_up.GetBinContent(i),h_nnpdf_up.GetBinContent(i)) < -0.3:
-      #U.SetBinContent(i,max(h_ct_up.GetBinContent(i-1),h_mstw_up.GetBinContent(i-1),h_nnpdf_up.GetBinContent(i-1)))
-    #else:
-    U.SetBinContent(i,max(h_ct_up.GetBinContent(i),h_mstw_up.GetBinContent(i),h_nnpdf_up.GetBinContent(i)))
-    #if U.GetBinContent(i) > 0.3 or U.GetBinContent(i) < -0.3:
-      #U.SetBinContent(i,U.GetBinContent(i-1))
-    #print i,U.GetBinContent(i),h_ct_up.GetBinContent(i),h_mstw_up.GetBinContent(i),h_nnpdf_up.GetBinContent(i)
-    
-    #if h_ct_down.GetBinContent(i) < -0.3 or h_ct_down.GetBinContent(i) > 0.3:
-      #L.SetBinContent(i,min(h_ct_down.GetBinContent(i-1),h_mstw_down.GetBinContent(i),h_nnpdf_down.GetBinContent(i)))
-    #elif h_mstw_down.GetBinContent(i) < -0.3 or h_mstw_down.GetBinContent(i) > 0.3:
-      #L.SetBinContent(i,min(h_ct_down.GetBinContent(i),h_mstw_down.GetBinContent(i-1),h_nnpdf_down.GetBinContent(i)))
-    #elif h_nnpdf_down.GetBinContent(i) < -0.3 or h_nnpdf_down.GetBinContent(i) > 0.3:
-      #L.SetBinContent(i,min(h_ct_down.GetBinContent(i),h_mstw_down.GetBinContent(i),h_nnpdf_down.GetBinContent(i-1)))
-    #elif min(h_ct_down.GetBinContent(i),h_mstw_down.GetBinContent(i),h_nnpdf_down.GetBinContent(i)) < -0.3 or min(h_ct_down.GetBinContent(i),h_mstw_down.GetBinContent(i),h_nnpdf_down.GetBinContent(i)) > 0.3:
-      #L.SetBinContent(i,min(h_ct_down.GetBinContent(i-1),h_mstw_down.GetBinContent(i-1),h_nnpdf_down.GetBinContent(i-1)))
-    #else: 
-    L.SetBinContent(i,min(h_ct_down.GetBinContent(i),h_mstw_down.GetBinContent(i),h_nnpdf_down.GetBinContent(i)))
-    #if L.GetBinContent(i) > 0.3 or L.GetBinContent(i) < -0.3:
-      #L.SetBinContent(i,L.GetBinContent(i-1))
-    M.SetBinContent(i,(U.GetBinContent(i) + L.GetBinContent(i))/2.)
+    ## Set the plotting style for the NNPDF pdf set
+    g_nnpdf.SetFillColor(r.kTeal)
+    g_nnpdf.SetFillStyle(3002)
+    g_nnpdf.SetLineColor(r.kTeal)
+    g_nnpdf.SetLineWidth(1)
 
-  leg = r.TLegend(0.164573,0.165803,0.364322,0.415803,"")
-  leg.SetFillColor(r.kWhite)
-  leg.SetLineColor(r.kWhite)
-  leg.AddEntry(g_ct,"CT10","lf")
-  leg.AddEntry(g_mstw,"MSTW","lf")
-  leg.AddEntry(g_nnpdf,"NNPDF","lf")
-  leg.AddEntry(U,"envelope","l")
-  leg.AddEntry(M,"mean","l")
-  setTDRStyle(0)
-  c1 = r.TCanvas("c1","",800,800)
+    ## Calculate the relative uncertainty bands for all pdf set
+    #
+    # Calculate the difference between the normal and reweighted histograms
+    # and translate them into a relative uncertainty
+    h_main.Add(h_main,-1)
+    h_main.SetLineColor(r.kBlack)
+    h_main.SetLineStyle(1)
+    h_main.SetLineWidth(1)
 
-  h_main.GetYaxis().SetRangeUser(-0.35,0.35)
-  h_main.GetXaxis().SetRangeUser(220,3000)
-  h_main.GetYaxis().SetTitle("(pdf - raw) / raw")
-  h_main.GetXaxis().SetTitle("M_{T} (GeV)")
-  h_main.SetStats(0)
-  h_main.Draw("hist")
-  g_ct.Draw("F same")
-  g_mstw.Draw("F same")
-  g_nnpdf.Draw("F same")
-  h_ct_up.Draw("hist same")
-  h_ct_down.Draw("hist same")
-  h_ct_mean.Draw("hist same")
-  h_mstw_up.Draw("hist same")
-  h_mstw_down.Draw("hist same")
-  h_mstw_mean.Draw("hist same")
-  h_nnpdf_up.Draw("hist same")
-  h_nnpdf_down.Draw("hist same")
-  h_nnpdf_mean.Draw("hist same")
-  U.Draw("hist same")
-  L.Draw("hist same")
-  M.Draw("hist same")
-  h_main.Draw("hist same")
-  leg.Draw("same")
+    ## Set the plotting style for the complete envelope
+    U = h_main.Clone("U")
+    U.SetLineColor(r.kRed)
+    U.SetLineStyle(1)
+    U.SetLineWidth(2)
+    L = h_main.Clone("L")
+    L.SetLineColor(r.kRed)
+    L.SetLineStyle(1)
+    L.SetLineWidth(2)
+    M = h_main.Clone("M")
+    M.SetLineColor(r.kRed)
+    M.SetLineStyle(2)
+    M.SetLineWidth(2)
 
-  cmspre = r.TLatex()
-  cmspre.SetNDC()
-  cmspre.SetTextSize(0.04)
-  cmspre.DrawLatex( 0.13,.965,"CMS Private Work")
+    ## Calculate the PDF set envelope
+    for i in range(1,h_main.GetNbinsX()):
+        U.SetBinContent(i,max(h_ct_up.GetBinContent(i),h_mstw_up.GetBinContent(i),h_nnpdf_up.GetBinContent(i)))
+        L.SetBinContent(i,min(h_ct_down.GetBinContent(i),h_mstw_down.GetBinContent(i),h_nnpdf_down.GetBinContent(i)))
+        M.SetBinContent(i,(U.GetBinContent(i) + L.GetBinContent(i))/2.)
 
-  intlumi = r.TLatex()
-  intlumi.SetNDC()
-  intlumi.SetTextAlign(12)
-  intlumi.SetTextSize(0.03)
-  intlumi.DrawLatex(0.45,0.97,"#mu + #slash{E}_{T}      #scale[0.7]{#int} L dt = 20 fb^{-1}")
+    ## Create the Legend for the plot
+    leg = r.TLegend(0.164573,0.165803,0.364322,0.415803,"")
+    leg.SetFillColor(r.kWhite)
+    leg.SetLineColor(r.kWhite)
+    leg.AddEntry(g_ct,"CT10","lf")
+    leg.AddEntry(g_mstw,"MSTW","lf")
+    leg.AddEntry(g_nnpdf,"NNPDF","lf")
+    leg.AddEntry(U,"envelope","l")
+    leg.AddEntry(M,"mean","l")
 
-  ecm = r.TLatex()
-  ecm.SetNDC()
-  ecm.SetTextAlign(12)
-  ecm.SetTextSize(0.03)
-  ecm.DrawLatex(0.83,0.975,"#sqrt{s} = 8 TeV")
-  r.gPad.RedrawAxis()
-  raw_input("done")
-  c1.SaveAs("pdf_sys.root")
-  c1.SaveAs("pdf_sys.png")
+    ## Set the style for the plot and create the canvas
+    setTDRStyle(0)
+    c1 = r.TCanvas("c1","",800,800)
 
+    ## Draw all histograms
+    h_main.GetYaxis().SetRangeUser(-0.35,0.35)
+    h_main.GetXaxis().SetRangeUser(220,3000)
+    h_main.GetYaxis().SetTitle("(pdf - raw) / raw")
+    h_main.GetXaxis().SetTitle("M_{T} (GeV)")
+    h_main.SetStats(0)
+    h_main.Draw("hist")
+    g_ct.Draw("F same")
+    g_mstw.Draw("F same")
+    g_nnpdf.Draw("F same")
+    h_ct_up.Draw("hist same")
+    h_ct_down.Draw("hist same")
+    h_ct_mean.Draw("hist same")
+    h_mstw_up.Draw("hist same")
+    h_mstw_down.Draw("hist same")
+    h_mstw_mean.Draw("hist same")
+    h_nnpdf_up.Draw("hist same")
+    h_nnpdf_down.Draw("hist same")
+    h_nnpdf_mean.Draw("hist same")
+    U.Draw("hist same")
+    L.Draw("hist same")
+    M.Draw("hist same")
+    h_main.Draw("hist same")
+    leg.Draw("same")
 
+    ## Add the textheader
+    cmspre = r.TLatex()
+    cmspre.SetNDC()
+    cmspre.SetTextSize(0.04)
+    cmspre.DrawLatex( 0.13,.965,"CMS Private Work")
+
+    intlumi = r.TLatex()
+    intlumi.SetNDC()
+    intlumi.SetTextAlign(12)
+    intlumi.SetTextSize(0.03)
+    intlumi.DrawLatex(0.45,0.97,"#mu + #slash{E}_{T}      #scale[0.7]{#int} L dt = 20 fb^{-1}")
+
+    ecm = r.TLatex()
+    ecm.SetNDC()
+    ecm.SetTextAlign(12)
+    ecm.SetTextSize(0.03)
+    ecm.DrawLatex(0.83,0.975,"#sqrt{s} = 8 TeV")
+
+    ## Redraw the axis of the plot
+    r.gPad.RedrawAxis()
+
+    ## Wait for user input
+    raw_input("done")
+
+    ## Save the results as .root and as .pdf file
+    c1.SaveAs("pdf_sys.root")
+    c1.SaveAs("pdf_sys.png")
+
+## Function to call the main method
+#
 if __name__ == '__main__':
-  main()
+    main()
