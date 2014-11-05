@@ -35,6 +35,10 @@ def main():
     # check if user has valid proxy
     gridFunctions.checkAndRenewVomsProxy()
     
+    crabController = crabFunctions.CrabController()
+    
+    print crabController.status(sample)
+    
     import json
     statusJSON = crabFunctions.crab_status(sample,options)
     #~ print json.dumps(statusJSON, sort_keys=True, indent=2, separators=(',', ': '))
