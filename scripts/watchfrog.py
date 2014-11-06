@@ -88,10 +88,10 @@ def commandline_parsing():
     parser.add_option( '--workingArea',metavar='DIR',default=os.getcwd(),help='The area (full or relative path) where the CRAB project directories are saved. ' \
                      'Defaults to the current working directory.'       )  
 
-
+    parsingController = crabFunctions.CrabController()
     # we need to add the parser options from other modules
     #get crab command line options
-    parser = crabFunctions.crab_commandlineOptions()
+    parsingController.crab_commandlineOptions(parser)
 
     (options, args ) = parser.parse_args()
     now = datetime.datetime.now()
@@ -100,7 +100,7 @@ def commandline_parsing():
     
     #get current user HNname
     if not options.user:
-        options.user = crab_checkHNname(options,log)
+        options.user = parsingController.checkHNname()
     
     return (options, args )
 
@@ -125,4 +125,7 @@ def getAllCrabFolders(options):
         
     
 if __name__ == '__main__':
-    main()
+    # get command line arguments
+    (options, args ) = commandline_parsing()
+    #~ test(options)
+    curseshelpers.outputWrapper(main, 5,options,args)
