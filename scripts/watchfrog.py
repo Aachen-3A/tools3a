@@ -11,12 +11,17 @@ import crabFunctions
 
 def main():
     
+    # check if user has valid proxy
+    gridFunctions.checkAndRenewVomsProxy()
+    
     # first setup command line parsing and parse input
     tag = "2014-10-13"
     
-    sample = "WToMuNu_M_200_13TeVSpring14miniaod-PU20bx25_POSTLS170_V5-v2MINI_P8"
+    #~ sample = "WToMuNu_M_200_13TeVSpring14miniaod-PU20bx25_POSTLS170_V5-v2MINI_P8"
+    sample = "WprimeToENu_M_3800_13TeVSpring14miniaod-PU20bx25_POSTLS170_V5-v1MINI_P8"
     #~ sample = "WToTauNu_M_200_13TeVSpring14miniaod-PU20bx25_POSTLS170_V5-v1MINI_P8"
     #~ sample = "QCD_Pt-170to300_13TeVSpring14miniaod-castor_PU20bx25_POSTLS170_V5-v1MINI_P8"
+    user = "tpook"
     folder="/%s/MUSiC/%s/%s" % (user,tag,sample)
     dCacheFileList = gridFunctions.getdcachelist(folder,tag)
 
@@ -32,15 +37,14 @@ def main():
     
     os.chdir("..")
     
-    # check if user has valid proxy
-    gridFunctions.checkAndRenewVomsProxy()
+
     
     crabController = crabFunctions.CrabController()
     
     print crabController.status(sample)
     
     import json
-    statusJSON = crabFunctions.crab_status(sample,options)
+    statusJSON = crabController.status(sample)
     #~ print json.dumps(statusJSON, sort_keys=True, indent=2, separators=(',', ': '))
     import ast
     statusDict = ast.literal_eval(statusJSON)
