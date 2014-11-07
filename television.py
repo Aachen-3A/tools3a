@@ -55,7 +55,7 @@ def nextUpdate(lastUpdate, updateInterval, nextTaskId):
     if nextTaskId==0:
         return lastUpdate+datetime.timedelta(seconds=updateInterval)-datetime.datetime.now()
     else:
-        return 0
+        return datetime.timedelta(seconds=-1)
 
 def resubmit(taskList, resubmitList, status, overview):
     """add jobs with a certain status to the resubmit list
@@ -233,7 +233,7 @@ def main(stdscr, options, args, passphrase):
         resubmitList.append(set())
     curses.noecho()
     stdscr.keypad(1)
-    updateInterval=1
+    updateInterval=600
     lastUpdate=datetime.datetime.now()
     
     # paint top rows
@@ -262,7 +262,7 @@ def main(stdscr, options, args, passphrase):
         # refresh overview (the task/job table or the jobinfo text)
         overview.currentView.refresh()
         
-        if nextUpdate(lastUpdate, updateInterval, nextTaskId)<0 or waitingForUpdate is not None:
+        if nextUpdate(lastUpdate, updateInterval, nextTaskId).days<0 or waitingForUpdate is not None:
             # should an update be performed or is ongoing?
             if waitingForUpdate is not None:
                 # update ongoing
@@ -298,9 +298,9 @@ def main(stdscr, options, args, passphrase):
         # user key press processing
         c = stdscr.getch()
         if c == ord('+'):
-            updateInterval+=30
+            updateInterval+=60
         elif c == ord('-'):
-            updateInterval=max(1,updateInterval-30)
+            updateInterval=max(0,updateInterval-60)
         elif c == ord('q') or c == 27 or c == curses.KEY_BACKSPACE:
             # q escape or backspace
             if overview.level:
