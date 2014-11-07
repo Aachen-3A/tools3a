@@ -51,6 +51,11 @@ def checkTask(task, resubmitJobs):
     status = task.getStatus()
     return task
 
+def nextUpdate(lastUpdate, updateInterval, nextTaskId):
+    if nextTaskId==0:
+        return lastUpdate+datetime.timedelta(seconds=updateInterval)-datetime.datetime.now()
+    else:
+        return 0
 
 def resubmit(taskList, resubmitList, status, overview):
     """add jobs with a certain status to the resubmit list
@@ -207,7 +212,7 @@ class Overview:
                     
             self.currentView=x
         self.currentView.refresh()
-        
+
 def main(stdscr, options, args, passphrase):
     # Logging
     #logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s",level=logging.DEBUG)
@@ -248,8 +253,8 @@ def main(stdscr, options, args, passphrase):
     while True:
         # main loop
         stdscr.addstr(1, 0, "Exit (q)  Raise/lower update interval (+)/(-) ("+str(updateInterval)+")  More information (return)  Update (SPACE)     ")
-        stdscr.addstr(2, 0, "Resubmit job (r)   By Status:  ABORTED (1), DONE-FAILED (2), (REALLY-)RUNNING (3), None (4), DONE-OK exitcode!=0 (5)")
-        stdscr.addstr(3, 0, "Next update {0}       ".format(timerepr(lastUpdate+datetime.timedelta(seconds=updateInterval)-datetime.datetime.now())))
+        stdscr.addstr(2, 0, "Resubmit job (r)   By Status:  ABORTED (1), DONE-FAILED (2), (REALLY-)RUNNING (3), None (4)")
+        stdscr.addstr(3, 0, "Next update {0}       ".format(timerepr(nextUpdate(lastUpdate, updateInterval, nextTaskId))))
         stdscr.addstr(4, 0, "Certificate expires {0}       ".format(timerepr(certtime-datetime.datetime.now())))
         if waitingForExit:
             stdscr.addstr(6,0,"Exiting... Waiting for status retrieval to finish...", curses.color_pair(1) | curses.A_BOLD)
@@ -257,7 +262,7 @@ def main(stdscr, options, args, passphrase):
         # refresh overview (the task/job table or the jobinfo text)
         overview.currentView.refresh()
         
-        if lastUpdate+datetime.timedelta(seconds=updateInterval)<datetime.datetime.now() or waitingForUpdate is not None:
+        if nextUpdate(lastUpdate, updateInterval, nextTaskId)<0 or waitingForUpdate is not None:
             # should an update be performed or is ongoing?
             if waitingForUpdate is not None:
                 # update ongoing
@@ -303,7 +308,6 @@ def main(stdscr, options, args, passphrase):
             else:
                 waitingForExit=True
         elif c == ord(' '):
-            nextTaskId = overview.overview.cursor
             lastUpdate = datetime.datetime.now()-datetime.timedelta(seconds=2*updateInterval)
         elif c == curses.KEY_DOWN:
             overview.currentView.goDown()
