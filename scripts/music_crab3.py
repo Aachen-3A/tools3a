@@ -33,8 +33,6 @@ skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject' )
 lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
 config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
 
-
-
 # Write everything into a log file in the directory you are submitting from.
 log = logging.getLogger( 'music_crab' )
 
@@ -43,16 +41,17 @@ runOnMC = False
 runOnData = False
 runOnGen = False
 
-
 import FWCore.ParameterSet.Config as cms
 
 def main():
+    # get controller object for contacts with crab
+    controller =  CrabController(logger = log)
     # Parse user input from command line
-    (options, args ) = commandline_parsing()
+    (options, args ) = commandline_parsing( controller )
     # Setup logging for music_crab
     setupLogging(options)
     
-
+    log.info("Starting music_crab3")
     
     # Read additional information from music_crab config file
     if(len(args))> 0:
@@ -64,7 +63,6 @@ def main():
     else:
         log.error("no config file specified.")
         sys.exit(1)
-    
     # Check if the current commit is tagged or tag it otherwise
     if not options.noTag:
         try:
@@ -74,12 +72,9 @@ def main():
             log.error( e )
             sys.exit( 3 )
     log.info("after tag")
-    
-    
+    log.info(controller.checkHNname())
     # first check if user has permission to write to selected site
-    if not crab_checkwrite(options,site="T2_DE_RWTH",crablog=log):sys.exit(1)
-    
-    
+    if not controller.checkwrite():sys.exit(1)
     
     # extract the global tag for the used config file
     #~ globalTag = log.info("using global tag: %s" % getGlobalTag(SampleFileInfoDict))
@@ -97,7 +92,6 @@ def main():
         else:
             log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
     
-                
 def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     global runOnMC 
     global runOnData
@@ -125,7 +119,7 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     config.set( 'JobType', 'pluginName', 'Analysis' )
     config.set( 'JobType', 'psetName', SampleFileInfoDict['pset'] )
     
-    # next two lines use old (pickle way)
+    # next two lines use old (pickle way) depreceated
     #~ preloadProcess(name,sample,SampleFileInfoDict)
     #~ config.set( 'JobType', 'psetName', name+'_cfg.py' )
     
@@ -603,7 +597,7 @@ def setupLogging(options):
     hdlr.setFormatter( formatter )
     log.addHandler( hdlr )
 
-def commandline_parsing():
+def commandline_parsing( parsingController ):
     ##parse user input
     ####################################
     # The following options
@@ -679,9 +673,9 @@ def commandline_parsing():
                                                         "jobs to run on other sites when for example a dataset is available on only one"\
                                                         " or a few sites which are very busy with jobs. Defaults to False. ")
     
-    
-    # add options for crabFunctions
-    crab_commandlineOptions(parser) 	
+    # we need to add the parser options from other modules
+    #get crab command line options
+    parsingController.commandlineOptions(parser)
     
     (options, args ) = parser.parse_args()
     now = datetime.datetime.now()
@@ -694,7 +688,7 @@ def commandline_parsing():
     
     #get current user HNname
     if not options.user:
-        options.user = crab_checkHNname(options,log)
+        options.user = parsingController.checkusername()
         
     return (options, args )
     
