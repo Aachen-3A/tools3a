@@ -214,7 +214,7 @@ class Overview:
             self.currentView = self.taskOverviews[self.currentTask]
         else:
             pp = pprint.PrettyPrinter(indent=4)
-            x = curseshelpers.TabbedText(self.stdscr, top=10, height=self.height)
+            x = curseshelpers.TabbedText(self.stdscr, top=10, height=self.height-2)
             try:
                 x.addText("Status information",pp.pformat(self.tasks[self.currentTask].jobs[self.currentJob].infos))
             except:
