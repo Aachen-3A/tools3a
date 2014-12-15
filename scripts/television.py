@@ -234,9 +234,14 @@ class Overview:
 
 def main(stdscr, options, args, passphrase):
     # Logging
-    #logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s",level=logging.DEBUG)
-    logging.basicConfig(format="%(asctime)s %(name)s %(process)d %(levelname)s %(message)s",level=logging._levelNames[options.debug.upper()])
     logger = logging.getLogger(__name__)
+    logger.setLevel(logging._levelNames[options.debug.upper()])
+    logQueue = multiprocessing.Queue()
+    logText = curseshelpers.BottomText(stdscr, stdscr.getmaxyx()[0]-5)
+    handler = curseshelpers.CursesMultiHandler(stdscr, logText, logQueue, level=logging._levelNames[options.debug.upper()])
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
     # curses color pairs 
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
@@ -281,7 +286,7 @@ def main(stdscr, options, args, passphrase):
         stdscr.refresh()
         # refresh overview (the task/job table or the jobinfo text)
         overview.currentView.refresh()
-        
+        logText.refresh()
         if nextUpdate(lastUpdate, updateInterval, nextTaskId).days<0 or waitingForUpdate is not None:
             # should an update be performed or is ongoing?
             if waitingForUpdate is not None:
@@ -365,6 +370,9 @@ def main(stdscr, options, args, passphrase):
         elif c==ord('K'):
             kill(taskList, killList, True)
             overview.update(taskList, resubmitList, killList, nextTaskId)
+        elif c==ord('t'):
+            logger.warning("warning")
+            logger.info("info")
         elif c == 10:   #enter key
             overview.down()
         else:
@@ -397,6 +405,6 @@ if __name__ == "__main__":
                 passphrase = None
             else:
                 cesubmit.renewVomsProxy(passphrase=passphrase)
-        #curses.wrapper(loggingwrapper, options, args, passphrase)
-        curseshelpers.outputWrapper(main, 5, options, args, passphrase)
+        curses.wrapper(main, options, args, passphrase)
+        #curseshelpers.outputWrapper(main, 5, options, args, passphrase)
     
