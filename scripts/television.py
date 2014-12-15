@@ -214,7 +214,7 @@ class Overview:
             self.currentView = self.taskOverviews[self.currentTask]
         else:
             pp = pprint.PrettyPrinter(indent=4)
-            x=curseshelpers.MultiText(self.stdscr, top=10, height=self.height, maxrows=20000)
+            x = curseshelpers.TabbedText(self.stdscr, top=10, height=self.height)
             try:
                 x.addText("Status information",pp.pformat(self.tasks[self.currentTask].jobs[self.currentJob].infos))
             except:
@@ -228,6 +228,7 @@ class Overview:
                     x.addFile("stderr",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"err.txt"))
                 except:
                     x.addText("stderr","could not find stderr")
+            x.addFile("jdl file", os.path.join(self.tasks[self.currentTask].directory,self.tasks[self.currentTask].jobs[self.currentJob].jdlfilename))
                     
             self.currentView=x
         self.currentView.refresh()
@@ -334,6 +335,10 @@ def main(stdscr, options, args, passphrase):
                 waitingForExit=True
         elif c == ord(' '):
             lastUpdate = datetime.datetime.now()-datetime.timedelta(seconds=2*updateInterval)
+        elif c == curses.KEY_LEFT:
+            overview.currentView.goLeft()
+        elif c == curses.KEY_RIGHT:
+            overview.currentView.goRight()
         elif c == curses.KEY_DOWN:
             overview.currentView.goDown()
         elif c == curses.KEY_UP:
