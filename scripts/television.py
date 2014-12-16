@@ -182,7 +182,10 @@ class Overview:
                     jobsince = datetime.datetime.fromtimestamp(int(job.infos["history"][-1][1])).strftime('%Y-%m-%d %H:%M:%S')
                 except:
                     jobsince = ""
-                jobrunningfor = getRunTimeFromHistory(job.infos["history"])
+                try:
+                    jobrunningfor = getRunTimeFromHistory(job.infos["history"])
+                except KeyError:
+                    jobrunningfor = ""
                 cells = [jobid, jobstatus, jobsince, jobrunningfor, jobfestatus, jobreturncode]
                 if job.nodeid in resubmitList[taskId] or job.nodeid in killList[taskId]:
                     printmode = curses.color_pair(5) | curses.A_BOLD
