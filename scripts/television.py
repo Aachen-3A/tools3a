@@ -91,6 +91,17 @@ def kill(taskList, killList, overview):
         # kill one job
         killList[overview.currentTask].add(overview.currentJob)
 
+def getRunTimeFromHistory(history):
+    starttime = [int(item[1]) for item in history if item[0] == "RUNNING"]
+    endtime = [int(item[1]) for item in history if "DONE" in item[0]]
+    if len(starttime)!=1:
+        return ""
+    if len(endtime)!=1:
+        timedelta = datetime.datetime.now() - datetime.datetime.fromtimestamp(starttime[0])
+    else:
+        timedelta = datetime.datetime.fromtimestamp(endtime[0]) - datetime.datetime.fromtimestamp(starttime[0])
+    return timerepr(timedelta)[3:]
+
 class Overview:
     """This class incorporates the 'graphical' overviews of tasks, jobs and jobinfo.
     Tasks and jobs overviews are stored persistantly in order to be aware of the selected task/job.
@@ -108,8 +119,8 @@ class Overview:
         self.overview.setColHeaders(["", "Task", "Status", "Performance", "Total", "Prep.", "Run.", "RRun.", "Abrt.", "Fail.", "OK", "Good", "None", "Retr."], widths)
         for task in tasks:
             taskOverview = curseshelpers.SelectTable(stdscr, top=10, height=self.height, maxrows=100+len(task.jobs))
-            widths=[100, 16, 22, 16, 10]
-            taskOverview.setColHeaders(["Job", "Status", "In Status since", "FE-Status", "Exit Code"], widths)
+            widths=[100, 16, 22, 22, 16, 10]
+            taskOverview.setColHeaders(["Job", "Status", "In Status since", "Running for", "FE-Status", "Exit Code"], widths)
             self.taskOverviews.append(taskOverview)
         self.update(tasks, resubmitList, killList, nextTaskId)
         self.tasks = tasks
@@ -171,7 +182,8 @@ class Overview:
                     jobsince = datetime.datetime.fromtimestamp(int(job.infos["history"][-1][1])).strftime('%Y-%m-%d %H:%M:%S')
                 except:
                     jobsince = ""
-                cells = [jobid, jobstatus, jobsince, jobfestatus, jobreturncode]
+                jobrunningfor = getRunTimeFromHistory(job.infos["history"])
+                cells = [jobid, jobstatus, jobsince, jobrunningfor, jobfestatus, jobreturncode]
                 if job.nodeid in resubmitList[taskId] or job.nodeid in killList[taskId]:
                     printmode = curses.color_pair(5) | curses.A_BOLD
                 elif jobstatus in ['DONE-FAILED', 'ABORTED']:
