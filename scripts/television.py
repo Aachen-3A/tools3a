@@ -184,7 +184,7 @@ class Overview:
                     jobsince = ""
                 try:
                     jobrunningfor = getRunTimeFromHistory(job.infos["history"])
-                except KeyError:
+                except (KeyError, AttributeError):
                     jobrunningfor = ""
                 cells = [jobid, jobstatus, jobsince, jobrunningfor, jobfestatus, jobreturncode]
                 if job.nodeid in resubmitList[taskId] or job.nodeid in killList[taskId]:
