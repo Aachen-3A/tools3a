@@ -23,7 +23,11 @@ import subprocess
 import imp
 import pickle
 import fnmatch
+
+#custom libs
 from crabFunctions import *
+import dbutilscms
+
 # some general definitions
 COMMENT_CHAR = '#'
 log_choices = [ 'ERROR', 'WARNING', 'INFO', 'DEBUG' ]
@@ -45,7 +49,8 @@ import FWCore.ParameterSet.Config as cms
 
 def main():
     # get controller object for contacts with crab
-    controller =  CrabController(logger = log)
+    #~ controller =  CrabController(logger = log)
+    controller =  CrabController()
     # Parse user input from command line
     (options, args ) = commandline_parsing( controller )
     # Setup logging for music_crab
@@ -72,7 +77,7 @@ def main():
             log.error( e )
             sys.exit( 3 )
     log.info("after tag")
-    log.info(controller.checkHNname())
+    log.info(controller.checkusername())
     # first check if user has permission to write to selected site
     if not controller.checkwrite():sys.exit(1)
     
@@ -85,9 +90,12 @@ def main():
     for key in SampleDict.keys():
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
         log.info("Created crab config object")
-        writeCrabConfig(key,CrabConfig,options)
-        crab_submit(options,key,log)
-        if options.db and not options.dry_run:
+        configFileName = writeCrabConfig(key,CrabConfig,options)
+        if not options.dry_run:
+             #~ controller.submit(key)
+             controller.submit( configFileName )
+        #~ if options.db and not options.dry_run:
+        if options.db:
             submitSample2db(key, SampleDict[key][1],SampleFileInfoDict)
         else:
             log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
@@ -109,8 +117,8 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     config.set( 'General', 'requestName', name )
     if options.workingArea:
         config.set( 'General', 'workArea', options.workingArea )
-    if options.transferOutput:
-        config.set( 'General', 'transferOutput', 'True')
+    if options.transferOutputs:
+        config.set( 'General', 'transferOutputs', 'True')
     if options.log:
         config.set( 'General', 'saveLogs', 'True' )
     
@@ -151,11 +159,11 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
             config.set( 'JobType', 'maxmemory', "%d"%int(options.maxmemory ) )
         except:
             log.error('Option maxmemory not used. maxmemory needs integer')
-    if options.maxjobruntime:
+    if options.maxJobRuntimeMin:
         try:
-            config.set( 'JobType', 'maxjobruntime', "%d"%int(options.maxjobruntime ) )
+            config.set( 'JobType', 'maxJobRuntimeMin', "%d"%int(options.maxJobRuntimeMin ) )
         except:
-            log.error('Option maxjobruntime not used. maxjobruntime needs integer')
+            log.error('Option maxJobRuntimeMin not used. maxJobRuntimeMin needs integer')
     if options.numcores:
         try:
             config.set( 'JobType', 'numcores', "%d"%int(options.numcores ) )
@@ -166,9 +174,9 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     ### Data section        
     config.add_section('Data')
     config.set( 'Data', 'inputDataset', sample )
-    config.set( 'Data', 'dbsUrl', options.dbsUrl)
+    config.set( 'Data', 'inputDBS', options.inputDBS)
     config.set( 'Data', 'publication', 'False' )
-    config.set( 'Data','publishDbsUrl','phys03')
+    config.set( 'Data','publishDBS','phys03')
     config.set( 'Data','publishDataName',name)
     
     if runOnData:
@@ -181,7 +189,9 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
             config.set( 'Data', 'runRange', lumi_mask )
     else:
         config.set( 'Data', 'splitting', 'FileBased' )
-        DatasetSummary = getDatasetSummary(sample)
+        dbshelper = dbutilscms.DBSUtilities()
+        DatasetSummary = dbshelper.getDatasetSummary(sample)
+        SampleFileInfoDict.update({'dbsInfos':DatasetSummary})
         try:
             #~ print DatasetSummary
             filesPerJob =  int((float(options.eventsPerJob) * int(DatasetSummary['numFiles'])) /  int(DatasetSummary['numEvents']) )
@@ -193,14 +203,14 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'Data', 'splitting', 'FileBased' )
         config.set( 'Data', 'unitsPerJob', '%d'%filesPerJob)
     
-    config.set( 'Data', 'outlfn', "/store/user/%s/MUSiC/%s/%s/"%(options.user,datetime.date.today().isoformat(),name))
+    config.set( 'Data', 'outLFN', "/store/user/%s/MUSiC/%s/%s/"%(options.user,datetime.date.today().isoformat(),name))
     
     ## set default for now, will change later
     config.set( 'Data', 'publishDataName', 'dummy' )
     if options.publish:
         config.set( 'Data', 'publication', 'True')
         # seems to be the only valid choice at the moment
-        config.set( 'Data', 'publishDbsUrl', 'phys03')
+        config.set( 'Data', 'publishDBS', 'phys03') 
     
     if options.ignoreLocality:
         config.set( 'Data', 'ignoreLocality', 'True')
@@ -247,12 +257,14 @@ def writeCrabConfig(name,config,options):
             runPath+="/"
     else:
         runPath ="./"
-        filename = '%s/crab_%s_cfg.py'%(runPath,name)
-        try:
-            config.writeCrabConfig(filename)
-            log.info( 'created crab config file %s'%filename )
-        except:
-            log.error("Could not create crab config file")
+    filename = '%s/crab_%s_cfg.py'%(runPath,name)
+    try:
+        config.writeCrabConfig(filename)
+        log.info( 'created crab config file %s'%filename )
+    except:
+        log.error("Could not create crab config file")
+    
+    return filename
     
 
 def getRunRange():
@@ -265,9 +277,9 @@ def readSampleFile(filename,options):
     outdict = {}
     sampledict = {}
     afterConfig = False
-    existing = getExistingProcesses()
+    existing = [] #]getExistingProcesses()
     
-    #check if only samples mathing a certain paatern should be added
+    #check if only samples matching a certain pattern should be added
     if options.only:
     # 'PATTERNS' should be a comma separated list of strings.
     # Remove all empty patterns and those containing only whitespaces.
@@ -285,9 +297,9 @@ def readSampleFile(filename,options):
                 generator = line.split( '=' )[1].strip()
                 outdict.update({'generator':generator})
                 runOnMC = True
-            if line.startswith( 'maxjobruntime' ):
+            if line.startswith( 'maxJobRuntimeMin' ):
                 generator = line.split( '=' )[1].strip()
-                outdict.update({'maxjobruntime':options.maxjobruntime})
+                outdict.update({'maxJobRuntimeMin':options.maxJobRuntimeMin})
                 runOnMC = True
             if line.startswith( 'CME' ):
                 energy = line.split( '=' )[1].strip()
@@ -337,13 +349,13 @@ def readSampleFile(filename,options):
                     lumi_mask = None
 
                 (name,sample) = first_part.split( ':' )
-                if name in existing.keys():
-                    log.warning( "Found existing CRAB task (%s) with process name '%s'!" % ( existing[ name ], name ) )
-                    if not options.submit:
-                        log.warning( "Skipping sample '%s'..." % sample )
-                        log.info( "If you want to submit it anyway, run again with '--submit'." )
-                        skipped[ name ] = sample
-                        continue
+                #~ if name in existing.keys():
+                    #~ log.warning( "Found existing CRAB task (%s) with process name '%s'!" % ( existing[ name ], name ) )
+                    #~ if not options.submit:
+                        #~ log.warning( "Skipping sample '%s'..." % sample )
+                        #~ log.info( "If you want to submit it anyway, run again with '--submit'." )
+                        #~ skipped[ name ] = sample
+                        #~ continue
                         
                 if runOnData:
                     sampledict.update({name:(name,sample,lumi_mask,lumisPerJob)})
@@ -385,16 +397,7 @@ def getExistingProcesses():
 
     return processes
 
-def getDatasetSummary( dataset ):
-    from dbs.apis.dbsClient import DbsApi
-    dbsUrl = 'https://cmsweb.cern.ch/dbs/prod/global/DBSReader'
-    dbsApi = DbsApi( url = dbsUrl )
-    datasetSummary = {}
-    datasetBlocks = dbsApi.listBlockSummaries( dataset = dataset )
-    datasetSummary.update({"numEvents":sum( [ block['num_event'] for block in datasetBlocks ] )} )
-    datasetSummary.update({"numFiles":sum( [ block['num_file'] for block in datasetBlocks ] )} )
-    datasetSummary.update({"totalFileSize":sum( [ block['file_size'] for block in datasetBlocks ] ) })
-    return datasetSummary
+
 
 
 #~ def getGlobalTag(SampleFileInfoDict):
@@ -433,7 +436,50 @@ def createDBlink():
     log.info( 'Authorized to database.' )
     return dblink
 
-def submitSample2db(name,sample,SampleFileInfoDict,dblink):
+def submitSample2db(name,sample,SampleFileInfoDict,options,dblink):
+    
+    # check which kind of sample to submit  
+    if runOnMC:
+        # get infos from McM
+        mcmutil = dbutilscms.McMUtilities()
+        mcmutil.readURL( sample )
+        # try to get sample db entry and create it otherwise
+        dbSample = dblink.getMCSample(sample)
+        if not dbSample:
+            dbSample = aix3adb.MCSample(sample)
+            dbSample.generator = SampleFileInfoDict['generator']
+            dbSample.crosssection = mcmutil.getCrossSection()
+            dbSample.crosssection_reference = 'McM'
+            dbSample.energy = SampleFileInfoDict['energy']
+            dbSample = aix3adb.insertMCSample(dbsample)
+            # !!TODO!! Inplementation of cross section from db
+
+        # create a new McSkim object
+        mcSkim = aix3adb.MCSkim(sample)
+        # create relation to dbsample object
+        mcSkim.sampleid = dbSample.id
+        mcSkim.owner = options.user
+        # where to get the skimmer name ??? MUSiCSkimmer fixed
+        mcSkim.skimmer_name = "MUSiCSkimmer"
+        mcSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
+        mcSkim.skimmer_globaltag = SampleFileInfoDict['globalTag']
+        mcSkim.nevents = SampleFileInfoDict['numEvents']
+        
+        aix3adb.insertMCskim(mcSkim)
+    elif runOnData:
+        # try to get sample db entry and create it otherwise
+        dbSample = dblink.getDataSample(sample)
+        if not dbSample:
+            dbSample = aix3adb.dataSample(sample)
+            aix3adb.insertDataSample(dbsample)
+        dataSkim = aix3adb.DataSkim(dbSample)
+        
+    elif runOnGen:
+        log.info("Gen Samples are not saved to db")
+    
+    
+
+def submitSample2dbOld(name,sample,SampleFileInfoDict,dblink):
     
     datasetInfos[ 'original_name' ] = sample
     datasetInfos[ 'energy' ] = SampleFileInfoDict['energy']
@@ -613,7 +659,7 @@ def commandline_parsing( parsingController ):
                             'E.g. --only QCD* ). [default: %default]' )
     parser.add_option( '-S', '--submit', action='store_true', default=False,
                        help='Force the submission of jobs, even if a CRAB task with the given process name already exists. [default: %default]' )
-    parser.add_option( '-d', '--dbsUrl', metavar='DBSURL',default='global', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
+    parser.add_option( '-d', '--inputDBS', metavar='inputDBS',default='global', help='Set DBS instance URL to use (e.g. for privately produced samples published in a local DBS).' )
     parser.add_option( '--dry-run', action='store_true', default=False, help='Do everything except calling CRAB or registering samples to the database.' )
     parser.add_option( '--debug', metavar='LEVEL', default='INFO', choices=log_choices,
                        help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
@@ -635,7 +681,7 @@ def commandline_parsing( parsingController ):
     parser.add_option( '--workingArea',metavar='DIR',default=os.getcwd(),help='The area (full or relative path) where to create the CRAB project directory. ' 
                              'If the area doesn\'t exist, CRAB will try to create it using the mkdir command' \
                              ' (without -p option). Defaults to the current working directory.'       )  
-    parser.add_option( '-t', '--transferOutput', action='store_true',default=True,help="Whether to transfer the output to the storage site"
+    parser.add_option( '-t', '--transferOutputs', action='store_true',default=True,help="Whether to transfer the output to the storage site"
                                                     'or leave it at the runtime site. (Not transferring the output might'\
                                                     ' be useful for example to avoid filling up the storage area with'\
                                                     ' useless files when the user is just doing some test.) ' )  
@@ -655,7 +701,7 @@ def commandline_parsing( parsingController ):
                                                 ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
     parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ') 
     parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
-    parser.add_option('--maxjobruntime', default=72,help="Overwrite the maxjobruntime if present in samplefile [default: 72]" ) 
+    parser.add_option('--maxJobRuntimeMin', default=72,help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72]" ) 
     parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" ) 
     parser.add_option('--priority', help='Task priority among the user\'s own tasks. Higher priority tasks will be processed before lower priority.'\
                                                     ' Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a'\
