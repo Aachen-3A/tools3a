@@ -12,6 +12,7 @@ import subprocess
 import cesubmit
 import getpass
 import multiprocessing
+import multiprocessing.pool
 import curseshelpers
 import pprint
 import logging
@@ -19,6 +20,17 @@ import collections
 import signal
 
 waitingForExit = False
+
+
+class NoDaemonProcess(multiprocessing.Process):
+    # make 'daemon' attribute always return False
+    def _get_daemon(self):
+        return False
+    def _set_daemon(self, value):
+        pass
+    daemon = property(_get_daemon, _set_daemon)
+class NoDaemonPool(multiprocessing.pool.Pool):
+    Process = NoDaemonProcess
 
 def terminate(signum, frame):
     global waitingForExit
@@ -55,7 +67,7 @@ def checkTask(task, resubmitJobs, killJobs):
     if len(killJobs) > 0:
         task.kill(killJobs, processes=6)
     if len(resubmitJobs) > 0:
-        task.resubmit(resubmitJobs, processes=0)
+        task.resubmit(resubmitJobs, processes=6)
     status = task.getStatus()
     task.getOutput(4)
     status = task.getStatus()
@@ -338,7 +350,7 @@ def main(stdscr, options, args, passphrase):
                     # prepare parameters
                     parameters = [taskList[nextTaskId], resubmitList[nextTaskId], killList[nextTaskId]]
                     # use one process only, actual multiprocessing is handled within this process (multiple jobs per tasks are retrieved)
-                    pool = multiprocessing.Pool(1)
+                    pool = NoDaemonPool(1)
                     result = pool.apply_async(checkTask, parameters)
                     pool.close()
                     # reset resubmit list for this task
