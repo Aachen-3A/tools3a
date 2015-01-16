@@ -407,7 +407,7 @@ def commandline_parsing():
     
     #get current user HNname
     if not options.user:
-        options.user = parsingController.checkHNname()
+        options.user = parsingController.checkusername()
     
     return (options, args )
 
