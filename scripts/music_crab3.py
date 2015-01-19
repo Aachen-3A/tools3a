@@ -68,6 +68,7 @@ def main():
     else:
         log.error("no config file specified.")
         sys.exit(1)
+        
     # Check if the current commit is tagged or tag it otherwise
     if not options.noTag:
         try:
@@ -78,6 +79,7 @@ def main():
             sys.exit( 3 )
     log.info("after tag")
     log.info(controller.checkusername())
+    
     # first check if user has permission to write to selected site
     if not controller.checkwrite():sys.exit(1)
     
@@ -86,6 +88,11 @@ def main():
     globalTag =  getGlobalTag(options)
     log.info("using global tag: %s" % globalTag)
     SampleFileInfoDict.update({'globalTag':globalTag})
+    
+    # create a connection to aix3adb if necessary
+    if options.db:
+        dblink = createDBlink(options)
+        
     # create crab config files and submit tasks
     for key in SampleDict.keys():
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
@@ -94,9 +101,10 @@ def main():
         if not options.dry_run:
              #~ controller.submit(key)
              controller.submit( configFileName )
+        # submit sample to aix3adb
         #~ if options.db and not options.dry_run:
         if options.db:
-            submitSample2db(key, SampleDict[key][1],SampleFileInfoDict)
+            submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink)
         else:
             log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
     
@@ -127,9 +135,6 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     config.set( 'JobType', 'pluginName', 'Analysis' )
     config.set( 'JobType', 'psetName', SampleFileInfoDict['pset'] )
     
-    # next two lines use old (pickle way) depreceated
-    #~ preloadProcess(name,sample,SampleFileInfoDict)
-    #~ config.set( 'JobType', 'psetName', name+'_cfg.py' )
     
     if options.failureLimit:
         try:
@@ -424,7 +429,7 @@ def getGlobalTag(options):
             globalTag = autoCond[ 'startup' ] 
     return globalTag
 
-def createDBlink():
+def createDBlink(options):
     import MUSiCProject.Tools.aix3adb as aix3adb
     
     # Create a database object.
@@ -432,30 +437,38 @@ def createDBlink():
 
     # Authorize to database.
     log.info( "Connecting to database: 'http://cern.ch/aix3adb'" )
-    dblink.authorize()
+    dblink.authorize(user = options.user)
     log.info( 'Authorized to database.' )
     return dblink
 
-def submitSample2db(name,sample,SampleFileInfoDict,options,dblink):
+def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
     
     # check which kind of sample to submit  
     if runOnMC:
         # get infos from McM
         mcmutil = dbutilscms.McMUtilities()
-        mcmutil.readURL( sample )
+        mcmutil.readURL( samplename )
         # try to get sample db entry and create it otherwise
-        dbSample = dblink.getMCSample(sample)
+        dbSample = dblink.getMCSample( samplename )
         if not dbSample:
-            dbSample = aix3adb.MCSample(sample)
+            
+            dbSample = aix3adb.insertMCSample()
+            dbSample.datasetpath = datasetpath 
+            dbSample.name = samplename 
+            dbSample.update( {'datasetname' : name} )
+            dbSample.update( {'skimmer_version' : 'alpha-0.1'} )
+            dbSample.update( {'skimmer_cmssw' : os.getenv( 'CMSSW_VERSION' )} )
             dbSample.generator = SampleFileInfoDict['generator']
             dbSample.crosssection = mcmutil.getCrossSection()
             dbSample.crosssection_reference = 'McM'
             dbSample.energy = SampleFileInfoDict['energy']
             dbSample = aix3adb.insertMCSample(dbsample)
+            
+            
             # !!TODO!! Inplementation of cross section from db
 
         # create a new McSkim object
-        mcSkim = aix3adb.MCSkim(sample)
+        mcSkim = aix3adb.MCSkim()
         # create relation to dbsample object
         mcSkim.sampleid = dbSample.id
         mcSkim.owner = options.user
@@ -464,15 +477,15 @@ def submitSample2db(name,sample,SampleFileInfoDict,options,dblink):
         mcSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
         mcSkim.skimmer_globaltag = SampleFileInfoDict['globalTag']
         mcSkim.nevents = SampleFileInfoDict['numEvents']
+        aix3adb.insertMCskim( mcSkim )
         
-        aix3adb.insertMCskim(mcSkim)
     elif runOnData:
         # try to get sample db entry and create it otherwise
-        dbSample = dblink.getDataSample(sample)
+        dbSample = dblink.getDataSample( datasetpath )
         if not dbSample:
-            dbSample = aix3adb.dataSample(sample)
-            aix3adb.insertDataSample(dbsample)
-        dataSkim = aix3adb.DataSkim(dbSample)
+            dbSample = aix3adb.dataSample( datasetpath )
+            aix3adb.insertDataSample( dbsample )
+        dataSkim = aix3adb.DataSkim( dbSample )
         
     elif runOnGen:
         log.info("Gen Samples are not saved to db")
