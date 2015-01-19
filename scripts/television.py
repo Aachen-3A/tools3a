@@ -12,10 +12,29 @@ import subprocess
 import cesubmit
 import getpass
 import multiprocessing
+import multiprocessing.pool
 import curseshelpers
 import pprint
 import logging
 import collections
+import signal
+
+waitingForExit = False
+
+
+class NoDaemonProcess(multiprocessing.Process):
+    # make 'daemon' attribute always return False
+    def _get_daemon(self):
+        return False
+    def _set_daemon(self, value):
+        pass
+    daemon = property(_get_daemon, _set_daemon)
+class NoDaemonPool(multiprocessing.pool.Pool):
+    Process = NoDaemonProcess
+
+def terminate(signum, frame):
+    global waitingForExit
+    waitingForExit = True
 
 def addtime(tfor,tsince,tto):
     """Add two time intervals
@@ -46,9 +65,9 @@ def checkTask(task, resubmitJobs, killJobs):
     resubmit jobs, get status, get output and get status again
     """
     if len(killJobs) > 0:
-        task.kill(killJobs)
+        task.kill(killJobs, processes=6)
     if len(resubmitJobs) > 0:
-        task.resubmit(resubmitJobs)
+        task.resubmit(resubmitJobs, processes=6)
     status = task.getStatus()
     task.getOutput(4)
     status = task.getStatus()
@@ -60,7 +79,7 @@ def nextUpdate(lastUpdate, updateInterval, nextTaskId):
     else:
         return datetime.timedelta(seconds=-1)
 
-def resubmit(taskList, resubmitList, status, overview):
+def resubmitByStatus(taskList, resubmitList, status, overview):
     """add jobs with a certain status to the resubmit list
     """
     if overview.level==0:
@@ -75,21 +94,21 @@ def resubmit(taskList, resubmitList, status, overview):
                 if (job.status == "DONE-OK" and job.infos["ExitCode"]!="0") or job.status != "DONE-OK":
                     resubmitList[t].add(j)
 
-def kill(taskList, killList, overview):
-    """add jobs to the kill list
+def addToList(taskList, myList, overview):
+    """add jobs to the kill / resubmit list
     """
     if overview is True:
-        # kill all tasks
+        # add all tasks
         for t in range(len(taskList)):
             for j in range(len(taskList[t].jobs)):
-                killList[t].add(j)
+                myList[t].add(j)
     elif overview.level==0:
-        # kill one task
+        # add one task
         for j in range(len(taskList[overview.currentTask].jobs)):
-            killList[overview.currentTask].add(j)
+            myList[overview.currentTask].add(j)
     elif overview.level==1:
-        # kill one job
-        killList[overview.currentTask].add(overview.currentJob)
+        # add one job
+        myList[overview.currentTask].add(overview.currentJob)
 
 def getRunTimeFromHistory(history):
     starttime = [int(item[1]) for item in history if item[0] == "RUNNING"]
@@ -176,11 +195,11 @@ class Overview:
                     jobfestatus = ""
                 try:
                     jobreturncode=job.infos["ExitCode"]
-                except:
+                except (KeyError, AttributeError):
                     jobreturncode = ""
                 try:
                     jobsince = datetime.datetime.fromtimestamp(int(job.infos["history"][-1][1])).strftime('%Y-%m-%d %H:%M:%S')
-                except:
+                except (KeyError, AttributeError, IndexError):
                     jobsince = ""
                 try:
                     jobrunningfor = getRunTimeFromHistory(job.infos["history"])
@@ -259,6 +278,8 @@ def main(stdscr, options, args, passphrase):
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
+    # catch sigterm to terminate gracefully
+    signal.signal(signal.SIGTERM, terminate)
     # curses color pairs 
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
@@ -285,7 +306,8 @@ def main(stdscr, options, args, passphrase):
     # get validity of the certificate
     certtime=datetime.datetime.now()+datetime.timedelta(seconds=cesubmit.timeLeftVomsProxy())
     # waitingForUpdate stores the current task when its updated. waitingForExit is needed to wait for all jobs to finish before exiting
-    waitingForUpdate, waitingForExit = None, False
+    global waitingForExit
+    waitingForUpdate = None
     nextTaskId=0
     overview = Overview(stdscr, taskList, resubmitList, killList, nextTaskId)
     # this is the pool for the update task.
@@ -293,8 +315,8 @@ def main(stdscr, options, args, passphrase):
     while True:
         # main loop
         stdscr.addstr(1, 0, "Exit <q>  Raise/lower update interval <+>/<-> ("+str(updateInterval)+")  More information <return>  Update <space>   ")
-        stdscr.addstr(2, 0, "Resubmit job <r>   By Status:  Aborted <1>, Done-Failed <2>, (Really-)Running <3>, None <4>, Done-Ok exit!=0 <5>")
-        stdscr.addstr(3, 0, "Kill job/task <k>   Kill all tasks <K>")
+        stdscr.addstr(2, 0, "Resubmit by Status:  Aborted <1>, Done-Failed <2>, (Really-)Running <3>, None <4>, Done-Ok exit!=0 <5>")
+        stdscr.addstr(3, 0, "Resubmit job/task <r>   Resubmit all tasks <R>    Kill job/task <k>   Kill all tasks <K>")
         stdscr.addstr(4, 0, "Next update {0}       ".format(timerepr(nextUpdate(lastUpdate, updateInterval, nextTaskId))))
         stdscr.addstr(5, 0, "Certificate expires {0}       ".format(timerepr(certtime-datetime.datetime.now())))
         if waitingForExit:
@@ -328,14 +350,14 @@ def main(stdscr, options, args, passphrase):
                     # prepare parameters
                     parameters = [taskList[nextTaskId], resubmitList[nextTaskId], killList[nextTaskId]]
                     # use one process only, actual multiprocessing is handled within this process (multiple jobs per tasks are retrieved)
-                    pool = multiprocessing.Pool(1)
+                    pool = NoDaemonPool(1)
                     result = pool.apply_async(checkTask, parameters)
                     pool.close()
                     # reset resubmit list for this task
                     resubmitList[nextTaskId], killList[nextTaskId] = set(), set()
                     waitingForUpdate = nextTaskId
                     nextTaskId = (nextTaskId+1) % len(taskList)
-                    
+
         # user key press processing
         c = stdscr.getch()
         if c == ord('+'):
@@ -367,28 +389,31 @@ def main(stdscr, options, args, passphrase):
         elif c == curses.KEY_END:
             overview.currentView.end()
         elif c == ord('1'):
-            resubmit(taskList, resubmitList, ["ABORTED"], overview)
+            resubmitByStatus(taskList, resubmitList, ["ABORTED"], overview)
             overview.update(taskList, resubmitList, killList, nextTaskId)
         elif c == ord('2'):
-            resubmit(taskList, resubmitList, ["DONE-FAILED"], overview)
+            resubmitByStatus(taskList, resubmitList, ["DONE-FAILED"], overview)
             overview.update(taskList, resubmitList, killList, nextTaskId)
         elif c == ord('3'):
-            resubmit(taskList, resubmitList, ["RUNNING", "REALLY-RUNNING"], overview)
+            resubmitByStatus(taskList, resubmitList, ["RUNNING", "REALLY-RUNNING"], overview)
             overview.update(taskList, resubmitList, killList, nextTaskId)
         elif c == ord('4'):
-            resubmit(taskList, resubmitList, ["None", None], overview)
+            resubmitByStatus(taskList, resubmitList, ["None", None], overview)
             overview.update(taskList, resubmitList, killList, nextTaskId)
         elif c == ord('5'):
-            resubmit(taskList, resubmitList, ["DONE-OK"], overview)
+            resubmitByStatus(taskList, resubmitList, ["DONE-OK"], overview)
             overview.update(taskList, resubmitList, killList, nextTaskId)
-        elif c==ord('r') and overview.level==1:
-            resubmitList[overview.currentTask].add(overview.currentJob)
+        elif c==ord('r'):
+            addToList(taskList, resubmitList, overview)
+            overview.update(taskList, resubmitList, killList, nextTaskId)
+        elif c==ord('R'):
+            addToList(taskList, resubmitList, True)
             overview.update(taskList, resubmitList, killList, nextTaskId)
         elif c==ord('k'):
-            kill(taskList, killList, overview)
+            addToList(taskList, killList, overview)
             overview.update(taskList, resubmitList, killList, nextTaskId)
         elif c==ord('K'):
-            kill(taskList, killList, True)
+            addToList(taskList, killList, True)
             overview.update(taskList, resubmitList, killList, nextTaskId)
         elif c==ord('t'):
             logger.warning("warning")
