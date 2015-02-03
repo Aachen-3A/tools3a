@@ -12,7 +12,7 @@
 # @author Tobias Pook
 
 import datetime
-import os
+import os, csv
 import sys
 import time
 import re
@@ -26,6 +26,8 @@ import fnmatch
 
 #custom libs
 from crabFunctions import *
+import aix3adb
+from  aix3adb import Aix3adbException
 import dbutilscms
 
 # some general definitions
@@ -77,11 +79,14 @@ def main():
         except Exception, e:
             log.error( e )
             sys.exit( 3 )
+    else:
+        SampleFileInfoDict.update({'gitTag':'noTag'})
+        
     log.info("after tag")
     log.info(controller.checkusername())
     
     # first check if user has permission to write to selected site
-    if not controller.checkwrite():sys.exit(1)
+    #~ if not controller.checkwrite():sys.exit(1)
     
     # extract the global tag for the used config file
     #~ globalTag = log.info("using global tag: %s" % getGlobalTag(SampleFileInfoDict))
@@ -92,21 +97,30 @@ def main():
     # create a connection to aix3adb if necessary
     if options.db:
         dblink = createDBlink(options)
+    else:
+        with open('aix3q_dummy.csv', 'a') as outcsv:
+            tempwriter = csv.writer( outcsv, delimiter=',', quotechar='"')
+            if runOnMC:
+                tempwriter.writerow( ['name', 'datasetpath','generator', 'xs', 'filtler_effi', 'filter_effi_ref', 'kfactor','energy', 'globalTag', 'CMSSW_Version', 'numEvents'] )
+            
         
     # create crab config files and submit tasks
     for key in SampleDict.keys():
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
         log.info("Created crab config object")
         configFileName = writeCrabConfig(key,CrabConfig,options)
-        if not options.dry_run:
-             #~ controller.submit(key)
+        if not options.dry_run and not options.resubmit:
              controller.submit( configFileName )
+        if not options.dry_run and options.resubmit:
+             controller.resubmit( configFileName )
+
         # submit sample to aix3adb
         #~ if options.db and not options.dry_run:
         if options.db:
-            submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink)
+            submitSample2db(key, SampleDict[ key ][1], SampleFileInfoDict,options,dblink)
         else:
             log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
+            submitSample2db_dump_csv( key, SampleDict[ key ][1], SampleFileInfoDict, options )
     
 def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     global runOnMC 
@@ -430,16 +444,36 @@ def getGlobalTag(options):
     return globalTag
 
 def createDBlink(options):
-    import MUSiCProject.Tools.aix3adb as aix3adb
+    
     
     # Create a database object.
     dblink = aix3adb.aix3adb()
 
     # Authorize to database.
     log.info( "Connecting to database: 'http://cern.ch/aix3adb'" )
-    dblink.authorize(user = options.user)
+    dblink.authorize(username = options.user)
     log.info( 'Authorized to database.' )
     return dblink
+
+def submitSample2db_dump_csv( samplename, datasetpath, SampleFileInfoDict, options ):
+    with open('aix3q_dummy.csv', 'a') as outcsv:
+        tempwriter = csv.writer( outcsv, delimiter=',', quotechar='"')
+        mcmutil = dbutilscms.McMUtilities()
+        mcmutil.readURL( datasetpath )
+        if runOnMC:
+            line = [samplename,
+                   datasetpath,\
+                   SampleFileInfoDict['generator'],\
+                   mcmutil.getCrossSection(), \
+                   mcmutil.getGenInfo('filter_efficiency'),\
+                   'McM',\
+                   1.,\
+                   SampleFileInfoDict['energy'],
+                   SampleFileInfoDict['globalTag'],
+                   os.getenv( 'CMSSW_VERSION' ),
+                   SampleFileInfoDict['dbsInfos']['numEvents'] ]
+        tempwriter.writerow(line)
+                       
 
 def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
     
@@ -447,44 +481,46 @@ def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
     if runOnMC:
         # get infos from McM
         mcmutil = dbutilscms.McMUtilities()
-        mcmutil.readURL( samplename )
+        mcmutil.readURL( datasetpath )
         # try to get sample db entry and create it otherwise
-        dbSample = dblink.getMCSample( samplename )
-        if not dbSample:
-            
-            dbSample = aix3adb.insertMCSample()
+        try:
+            dbSample = dblink.getMCSample( samplename )
+        except Aix3adbException:   
+            dbSample = aix3adb.MCSample()
             dbSample.datasetpath = datasetpath 
             dbSample.name = samplename 
-            dbSample.update( {'datasetname' : name} )
-            dbSample.update( {'skimmer_version' : 'alpha-0.1'} )
-            dbSample.update( {'skimmer_cmssw' : os.getenv( 'CMSSW_VERSION' )} )
+            dbSample.datasetpath= datasetpath 
             dbSample.generator = SampleFileInfoDict['generator']
-            dbSample.crosssection = mcmutil.getCrossSection()
+            dbSample.crosssection = str(mcmutil.getCrossSection())
+            dbSample.filter_efficiency = mcmutil.getGenInfo('filter_efficiency')
+            dbSample.filter_efficiency_reference = 'McM'
+            dbSample.kfactor = 1.
             dbSample.crosssection_reference = 'McM'
             dbSample.energy = SampleFileInfoDict['energy']
-            dbSample = aix3adb.insertMCSample(dbsample)
-            
-            
-            # !!TODO!! Inplementation of cross section from db
-
+            dbSample = dblink.insertMCSample(dbSample)
+           
         # create a new McSkim object
         mcSkim = aix3adb.MCSkim()
         # create relation to dbsample object
         mcSkim.sampleid = dbSample.id
         mcSkim.owner = options.user
+        mcSkim.is_created = 1
+        now = datetime.datetime.now()
+        mcSkim.created_at = now.strftime( "%Y-%m-%d %H-%M-%S" )
         # where to get the skimmer name ??? MUSiCSkimmer fixed
         mcSkim.skimmer_name = "MUSiCSkimmer"
         mcSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
         mcSkim.skimmer_globaltag = SampleFileInfoDict['globalTag']
-        mcSkim.nevents = SampleFileInfoDict['numEvents']
-        aix3adb.insertMCskim( mcSkim )
+        mcSkim.nevents = SampleFileInfoDict['dbsInfos']['numEvents']
+        dblink.insertMCSkim( mcSkim )
         
+            
     elif runOnData:
         # try to get sample db entry and create it otherwise
         dbSample = dblink.getDataSample( datasetpath )
         if not dbSample:
-            dbSample = aix3adb.dataSample( datasetpath )
-            aix3adb.insertDataSample( dbsample )
+            dbSample = aix3adb.DataSample( datasetpath )
+            dblink.insertDataSample( dbsample )
         dataSkim = aix3adb.DataSkim( dbSample )
         
     elif runOnGen:
@@ -688,6 +724,7 @@ def commandline_parsing( parsingController ):
     # new feature alternative username
     parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
     parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
+    parser.add_option( '--resubmit',action='store_true', default=False, help='Try to resubmit jobs instead of submit')
     ###########################################
     # new  options for General section in pset
     ##########################################
