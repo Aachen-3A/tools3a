@@ -385,7 +385,8 @@ def commandline_parsing():
 
 
     
-    parsingController = crabFunctions.CrabController(logger = mylogger)
+    #~ parsingController = crabFunctions.CrabController(logger = mylogger)
+    parsingController = crabFunctions.CrabController()
     # we need to add the parser options from other modules
     #get crab command line options
     parsingController.commandlineOptions(parser)
