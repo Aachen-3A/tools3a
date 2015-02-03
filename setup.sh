@@ -35,12 +35,12 @@ DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 #################
 ## setup hooks ##
 #################
-if [ -d "./hooks/" ]; then
+if [ -d "$DIR/hooks/" ]; then
   # Control will enter here if $DIRECTORY exists.
   echo "dirctory hooks exists"
-  if [! -f "./hooks/githookcontroller.py" ]; then
+  if [ ! -f "$DIR/hooks/githookcontroller.py" ]; then
         $pwd = `pwd`
-        cd ".$pwd/hooks/"
+        cd "$DIR/hooks/"
         git pull
         cd $pwd
         setlinks=0
