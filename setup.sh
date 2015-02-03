@@ -50,7 +50,7 @@ if [ -d "$DIR/hooks/" ]; then
     fi
 else
     # clone hookcontrollers
-    git clone git@github.com:Aachen-3A/githookcontroller.git hooks
+    git clone git@github.com:Aachen-3A/githookcontroller.git $DIR/hooks
     setlinks=0
 fi
 
