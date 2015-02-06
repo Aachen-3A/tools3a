@@ -35,9 +35,9 @@ COMMENT_CHAR = '#'
 log_choices = [ 'ERROR', 'WARNING', 'INFO', 'DEBUG' ]
 date = '%F %H:%M:%S'
 
-skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject' )
-lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
-config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
+skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer' )
+lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/lumi' )
+config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/configs' )
 
 # Write everything into a log file in the directory you are submitting from.
 log = logging.getLogger( 'music_crab' )
