@@ -69,7 +69,7 @@ def checkTask(task, resubmitJobs, killJobs):
     if len(resubmitJobs) > 0:
         task.resubmit(resubmitJobs, processes=6)
     status = task.getStatus()
-    task.getOutput(4)
+    task.getOutput(6)
     status = task.getStatus()
     return task
 
@@ -341,22 +341,16 @@ def main(stdscr, options, args, passphrase):
                 if passphrase:
                     cesubmit.checkAndRenewVomsProxy(648000, passphrase=passphrase)
                     certtime=datetime.timedelta(seconds=cesubmit.timeLeftVomsProxy())+datetime.datetime.now()
-                if False:  #set to true for serious debugging, this disables the multiprocessing
-                    for task in taskList:
-                        checkTask(task)
-                    overview.update(taskList, resubmitList, killList, nextTaskId)
-                    lastUpdate = datetime.datetime.now()
-                else:
-                    # prepare parameters
-                    parameters = [taskList[nextTaskId], resubmitList[nextTaskId], killList[nextTaskId]]
-                    # use one process only, actual multiprocessing is handled within this process (multiple jobs per tasks are retrieved)
-                    pool = NoDaemonPool(1)
-                    result = pool.apply_async(checkTask, parameters)
-                    pool.close()
-                    # reset resubmit list for this task
-                    resubmitList[nextTaskId], killList[nextTaskId] = set(), set()
-                    waitingForUpdate = nextTaskId
-                    nextTaskId = (nextTaskId+1) % len(taskList)
+                # prepare parameters
+                parameters = [taskList[nextTaskId], resubmitList[nextTaskId], killList[nextTaskId]]
+                # use one process only, actual multiprocessing is handled within this process (multiple jobs per tasks are retrieved)
+                pool = NoDaemonPool(1)
+                result = pool.apply_async(checkTask, parameters)
+                pool.close()
+                # reset resubmit list for this task
+                resubmitList[nextTaskId], killList[nextTaskId] = set(), set()
+                waitingForUpdate = nextTaskId
+                nextTaskId = (nextTaskId+1) % len(taskList)
 
         # user key press processing
         c = stdscr.getch()
