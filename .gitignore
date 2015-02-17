@@ -1,3 +1,4 @@
 # ignore the doc folder
 doc/
-
+hooks/
+*.pyc
