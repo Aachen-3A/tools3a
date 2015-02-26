@@ -263,7 +263,7 @@ class Overview:
                 except:
                     x.addText("stderr","could not find stderr")
             x.addFile("jdl file", os.path.join(self.tasks[self.currentTask].directory,self.tasks[self.currentTask].jobs[self.currentJob].jdlfilename))
-                    
+
             self.currentView=x
         self.currentView.refresh()
 
@@ -280,7 +280,7 @@ def main(stdscr, options, args, passphrase):
 
     # catch sigterm to terminate gracefully
     signal.signal(signal.SIGTERM, terminate)
-    # curses color pairs 
+    # curses color pairs
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
@@ -289,7 +289,10 @@ def main(stdscr, options, args, passphrase):
     taskList, resubmitList, killList = [], [], []
     # load tasks from directories
     for directory in args:
-        task = cesubmit.Task.load(directory)
+        try:
+            task = cesubmit.Task.load(directory)
+        except:
+            continue
         taskList.append(task)
         resubmitList.append(set())
         killList.append(set())
@@ -297,7 +300,7 @@ def main(stdscr, options, args, passphrase):
     stdscr.keypad(1)
     updateInterval=600
     lastUpdate=datetime.datetime.now()
-    
+
     # paint top rows
     stdscr.addstr(0, 0, ("{0:^"+str(stdscr.getmaxyx()[1])+"}").format("television"), curses.A_REVERSE)
     stdscr.timeout(1000)
@@ -435,7 +438,10 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
     if options.dump:
         for directory in args:
-            task = cesubmit.Task.load(directory)
+            try:
+                task = cesubmit.Task.load(directory)
+            except:
+                continue
             pp = pprint.PrettyPrinter(indent=2)
             pp.pprint(task.__dict__)
             for job in task.jobs:
@@ -452,4 +458,4 @@ if __name__ == "__main__":
                 cesubmit.renewVomsProxy(passphrase=passphrase)
         curses.wrapper(main, options, args, passphrase)
         #curseshelpers.outputWrapper(main, 5, options, args, passphrase)
-    
+
