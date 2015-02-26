@@ -109,7 +109,9 @@ def main():
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
         log.info("Created crab config object")
         configFileName = writeCrabConfig(key,CrabConfig,options)
-        if not options.dry_run and not options.resubmit:
+        # sampleInDB may return false if notInDB option is used to submit sample
+        # which are not in aix3adb yet
+        if not options.dry_run and not options.resubmit and sampleInDB( options, dblink, key):
              controller.submit( configFileName )
         if not options.dry_run and options.resubmit:
              controller.resubmit( configFileName )
@@ -121,6 +123,7 @@ def main():
         else:
             log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
             submitSample2db_dump_csv( key, SampleDict[ key ][1], SampleFileInfoDict, options )
+
 
 def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     global runOnMC
@@ -420,16 +423,6 @@ def getExistingProcesses():
     return processes
 
 
-
-
-#~ def getGlobalTag(SampleFileInfoDict):
-    #~ pset = SampleFileInfoDict['pset']
-
-    #~ with open(pset,"rb" ) as psetfile:
-        #~ cfo = imp.load_source("pycfg", pset, psetfile )
-        #~ globalTag = cfo.getGlobalTag()
-        #~ del cfo
-        #~ return globalTag
 def getGlobalTag(options):
     someCondition = False
     if options.globalTag:
@@ -457,6 +450,14 @@ def createDBlink(options):
     dblink.authorize(username = options.user)
     log.info( 'Authorized to database.' )
     return dblink
+
+def sampleInDB(options, dblink, sample):
+    try:
+        if options.notInDB:
+            dbSample = dblink.getMCSample( samplename )
+        return True
+    except Aix3adbException:
+        return False
 
 def submitSample2db_dump_csv( samplename, datasetpath, SampleFileInfoDict, options ):
     with open('aix3q_dummy.csv', 'a') as outcsv:
@@ -508,6 +509,7 @@ def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
         mcSkim.sampleid = dbSample.id
         mcSkim.owner = options.user
         mcSkim.is_created = 1
+        mcSkim.is_deprecated  = 0
         now = datetime.datetime.now()
         mcSkim.created_at = now.strftime( "%Y-%m-%d %H-%M-%S" )
         # where to get the skimmer name ??? MUSiCSkimmer fixed
@@ -728,6 +730,7 @@ def commandline_parsing( parsingController ):
     parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
     parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
     parser.add_option( '--resubmit',action='store_true', default=False, help='Try to resubmit jobs instead of submit')
+    parser.add_option( '--notInDB',action='store_true', default=False, help='Only submit samples if not in aix3aDB')
     ###########################################
     # new  options for General section in pset
     ##########################################

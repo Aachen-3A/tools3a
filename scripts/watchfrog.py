@@ -42,19 +42,20 @@ def runserver( options, args):
     manager.shutdown()
     serverLock.release()
 
-def main( options , args):
+#~ def main( options , args):
+def main(  ):
+    (options, args ) = commandline_parsing()
+    #~ curseshelpers.outputWrapper(runGui, 5,options,args)
+    curses.wrapper(runGui, options, args)    
     
-    curseshelpers.outputWrapper(runGui, 5,options,args)
-        
 def runGui(stdscr , options, args):
-    
     class CrabManager( multiprocessing.managers.BaseManager ):
         pass
     job_q = multiprocessing.Queue()
     result_q = multiprocessing.Queue()
     log_q = multiprocessing.Queue()
     
-    
+    #~ multiprocessing.freeze_support()
     CrabManager.register('Controller', crabFunctions.CrabController)
     
     CrabManager.register('get_job_q', callable=lambda: job_q)
@@ -69,8 +70,14 @@ def runGui(stdscr , options, args):
     options.shared_log_q = manager.get_log_q()
     optionsLock.release()
     
-    crabController = manager.Controller( workingArea = options.workingArea, logger = mylogger )
+    ch =logging.FileHandler('frog.log', mode='a', encoding=None, delay=False)
+    ch.setLevel(logging.INFO)
     
+    mylogger.addHandler(ch)
+    #~ mylogger.setLevel(logging.DEBUG)
+    mylogger.setLevel(logging.INFO)
+    
+    crabController = manager.Controller( )
     
     crabWorkers = mp_crab_worker(options.shared_job_q , options.shared_result_q , options.shared_log_q ,max(options.nCores-1 , 1) )
     
@@ -90,12 +97,8 @@ def runGui(stdscr , options, args):
     logText = curseshelpers.BottomText(stdscr,top=40)
     # handler without multiprocessing layer
     #ch = curseshelpers.CursesHandler(stdscr,logText)
-    ch = curseshelpers.CursesMultiHandler( stdscr, logText, options.shared_log_q )
+    #~ ch = curseshelpers.CursesMultiHandler( stdscr, logText, options.shared_log_q )
     
-    ch.setLevel(logging.INFO)
-    
-    mylogger.addHandler(ch)
-    mylogger.setLevel(logging.DEBUG)
     
     stdscr.timeout(1000)
     curses.curs_set(0)
@@ -113,10 +116,11 @@ def runGui(stdscr , options, args):
     
     logText.clear()
     resubmitList = []
-    overview = Overview(stdscr, tasknameList , resubmitList, crabController)
+    overview = Overview(stdscr, tasknameList , resubmitList, job_q ) 
 
     logText._redraw()
     updateFlag = True
+    mylogger.info(" Finished init. Running GUI now")
     while not waitingForExit:
         count+=1
         stdscr.addstr(2, 0, "Next update {0}       ".format(timerepr(lastUpdate+datetime.timedelta(seconds=options.updateInterval)-datetime.datetime.now())))
@@ -127,11 +131,18 @@ def runGui(stdscr , options, args):
             tasks = overview.tasks
             #filter tasks which are still updating
             tasks = filter(lambda task: not task.isUpdating, tasks)
+            #filter tasks which are already marked as complete
+            tasks[:] = [task for task in tasks if not task.state == "COMPLETE"]
             optionsLock.acquire()
             for task in tasks:
-                mylogger.info("adding task %s with updateTime %s to queue"% ( task.name , task.lastUpdate ))
-                task.state = "UPDATING"
-                options.shared_job_q.put(task)
+                mylogger.info("adding task %s with state %s updateTime %s to queue"% ( task.name , task.state, task.lastUpdate ))
+                #resubmit failed tasks
+                if "FAILED" in task.state:
+                    task.state == "RESUBMIT"
+                else:    
+                    task.state = "UPDATING"
+                options.shared_job_q.put(( task.state , task))
+                time.sleep(0.1)
             optionsLock.release()
             updateFlag = False
             lastUpdate = datetime.datetime.now()
@@ -139,10 +150,12 @@ def runGui(stdscr , options, args):
         overview.update()
         try:
             #~ finishedTask = options.shared_result_q.get()
+            #~ mylogger.info("Tring to get updated Task from queue")
+
             finishedTask = options.shared_result_q.get_nowait()
             overview.tasks[:] = [task for task in overview.tasks if not finishedTask.uuid == task.uuid]
             mylogger.info("Appending Task %s with update time %s"% ( finishedTask.name, finishedTask.lastUpdate ) )
-            overview.tasks.append(finishedTask)
+            overview.tasks.insert(finishedTask.taskId, finishedTask)
             
         except Queue.Empty:
             pass
@@ -151,10 +164,10 @@ def runGui(stdscr , options, args):
         logText.refresh()
         addInfoHeader(stdscr, options)
         c = stdscr.getch()
-        if c < 256 and c > 0:
-            mylogger.info(chr(c))
-        elif c>0:
-            mylogger.info(str(c))
+        #~ if c < 256 and c > 0:
+            #~ mylogger.info(chr(c))
+        #~ elif c>0:
+            #~ mylogger.info(str(c))
         if c == ord('q') or c == 27 or c == curses.KEY_BACKSPACE:
             # q escape or backspace
             if overview.level:
@@ -166,6 +179,8 @@ def runGui(stdscr , options, args):
         elif c == ord('-'):
             options.updateInterval=max(30,options.updateInterval-30)
         elif c == ord(' '):
+            overview.update_currentTask()
+        elif c == ord('u'):
             updateFlag = True
         elif c == curses.KEY_DOWN:
             overview.currentView.goDown()
@@ -181,6 +196,7 @@ def runGui(stdscr , options, args):
             overview.currentView.end()   
         elif c == 10:   #enter key
             overview.down()
+        time.sleep(0.01)
     # free shell from curses
     curses.nocbreak(); stdscr.keypad(0); curses.echo()
     curses.endwin()
@@ -221,22 +237,54 @@ def mp_crab_worker(shared_job_q, shared_result_q, shared_log_q, nprocs):
         #~ p.join()
     return procs
 
+
 def crab_worker(job_q, result_q, log_q):
     """ A worker function to be launched in a separate process. Takes jobs from
-        job_q - each job a list of numbers to factorize. When the job is done,
-        the result (dict mapping number -> list of factors) is placed into
-        result_q. Runs until job_q is empty.
+        job_q -. When the job is done,
+        the result is placed into result_q. Runs until job_q is empty.
     """
+    import random
+    ch = logging.FileHandler('frog.log', mode='a', encoding=None, delay=False)
+    ch.setLevel(logging.DEBUG)
+    # create formatter
+    formatter = logging.Formatter( '%(asctime)s - %(name)s - %(levelname)s - %(message)s' )
+    time.sleep(random.randint(0, 150) / 100.  )
+    # add formatter to ch
+    ch.setFormatter(formatter)
+    mylogger = logging.getLogger('worker')
+    mylogger.setLevel(logging.DEBUG)
+    mylogger.addHandler(ch)
     while True:
         try:
-            crabTask = job_q.get_nowait()
-            crabTask.update()
-            #~ log_q.put('log_q updated Task %s'%crabTask.name)
-            mylogger.info('updated Task %s'%crabTask.name)
+            #~ mylogger.info('tring to git from q')
+            ( state, crabTask ) = job_q.get_nowait()
+            #~ os.stat('~/.crab').st_atime 
+            mylogger.info('in worker updating Task %s now state %s '% (crabTask.name ,state) )
+            if "RESUBMIT" in state:
+                failedJobIds = []
+                now = datetime.datetime.now()
+                mylogger.info('in worker rseubmit taks')
+                for jobkey in crabTask.jobs.keys():
+                    job = task.jobs[jobkey]
+                    mylogger.info( 'state %s' % job['State'] )
+                    if job['State'] == 'failed':
+                        mylogger.info('Time since resubmit: \n %d' % int(now - int(job['StartTimes'][-1])) )
+                    if job['State'] == 'failed' and int( now - int(job['StartTimes'][-1]) )  > 36000:
+                        failedJobIds.append( job['JobIds'][-1] )
+                    elif job['State'] == 'failed':
+                        mylogger.error( 'job failed but not resubmitted' )
+                crabTask.resubmit_failed( self )
+                
+            else:
+                crabTask.update()
+            mylogger.info('in worker updated Task %s now state %s '% (crabTask.name, crabTask.state ) )
             result_q.put( crabTask )
         except Queue.Empty:
             #~ mylogger.info("finished all crab update tasks in q")
-            time.sleep(0.5)
+            time.sleep(1.)
+            time.sleep( random.randint(0, 100) / 100. )
+        except Exception as e:
+            mylogger.error('something went wrong in the worker: \n %s' % str(e))
 
 def getAllCrabFolders(options):
     # get all crab folders in working directory
@@ -259,17 +307,17 @@ def getAllCrabFolders(options):
 
 
 class Overview:
-    def __init__(self, stdscr, taskNameList, resubmitList,crabController):
+    def __init__(self, stdscr, taskNameList, resubmitList, shared_job_q):
         self.level = 0
         self.taskId = 0
         self.cursor = 0
         self.stdscr = stdscr
+        self.shared_job_q = shared_job_q
         self.taskOverviews = []
-        self.crabController = crabController
         self.tasks = []
         # can be deleted in cleanup ?
         for taskName in taskNameList:
-            self.tasks.append( crabFunctions.CrabTask( taskName, self.crabController ) )
+            self.tasks.append( crabFunctions.CrabTask( taskName, initUpdate = False) )
         
         self.height=stdscr.getmaxyx()[0]-16
         self.height=stdscr.getmaxyx()[0]-16
@@ -295,12 +343,30 @@ class Overview:
         
         for (taskId, taskOverview, task) in zip(range(len(self.tasks)), self.taskOverviews, self.tasks):
             printmode = self.getPrintmode(task)
-            cells = [taskId, task.name ,task.state ,task.nJobs , task.nUnsubmitted , task.nIdle, task.nRunning , task.nCooloff , task.nFailed, task.nTransferring , task.nFinished , task.lastUpdate]
+            task.taskId = taskId
+            cells = [task.taskId, task.name ,task.state ,task.nJobs , task.nUnsubmitted , task.nIdle, task.nRunning , task.nCooloff , task.nFailed, task.nTransferring , task.nFinished , task.lastUpdate]
             self.tasktable.addRow( cells , printmode )
             taskOverview.clear()
             for jobkey in task.jobs.keys():
                 job = task.jobs[jobkey]
-                taskOverview.addRow( [jobkey, job['JobIds'][-1], job['State'], job['Retries'], job['Restarts'], ' '.join(job['SiteHistory']), formatedUnixTimestamp(job['SubmitTimes'][-1]), formatedUnixTimestamp(job['StartTimes'][-1]), formatedUnixTimestamp(job['EndTimes'][-1]), ] )
+                if not 'EndTimes' in job.keys():
+                    jobendtimes = ''
+                if len(job['EndTimes']) > 0:
+                    jobendtimes = formatedUnixTimestamp(job['EndTimes'][-1])
+                else:
+                    jobendtimes = ''
+                try:
+                    taskOverview.addRow( [jobkey,
+                                          job['JobIds'][-1],
+                                          job['State'],
+                                          job['Retries'], 
+                                          job['Restarts'],
+                                          ' '.join(job['SiteHistory']),
+                                          formatedUnixTimestamp(job['SubmitTimes'][-1]),
+                                          formatedUnixTimestamp(job['StartTimes'][-1]),
+                                           jobendtimes] )
+                except:
+                    pass
         self.tasktable.refresh()
         cells = ["", "TOTAL", "", self.taskStats.nTasks, self.taskStats.nUnsubmitted, self.taskStats.nIdle, self.taskStats.nRunning, self.taskStats.nCooloff,self.taskStats.nFailed, self.taskStats.nTransferring , self.taskStats.nFinished ]
         self.tasktable.setFooters(cells)
@@ -332,6 +398,11 @@ class Overview:
     @property
     def currentTask(self):
         return self.tasktable.cursor
+    
+    def update_currentTask(self):
+        self.tasks[self.currentTask].state = "UPDATING"
+        self.shared_job_q.put_nowait( (self.tasks[self.currentTask].state
+                                    ,self.tasks[self.currentTask]) )
     def down(self):
         self.stdscr.clear()
         self.level=min(self.level+1,2)
@@ -402,10 +473,14 @@ def commandline_parsing():
         options.workingArea = os.path.abspath(os.getcwd())
     
     options.runServer = True
+    # get pass before starting
     
+    import getpass
+    passphrase = getpass.getpass('Please enter your GRID pass phrase:')
     # check if user has valid proxy
-    gridFunctions.checkAndRenewVomsProxy()
-    
+    import gridFunctions 
+    gridFunctions.checkAndRenewVomsProxy( passphrase = passphrase)
+   
     #get current user HNname
     if not options.user:
         options.user = parsingController.checkusername()
@@ -414,9 +489,10 @@ def commandline_parsing():
 
 if __name__ == '__main__':
     # get command line arguments
-    (options, args ) = commandline_parsing()
+    
     #~ runserver( options, args )
-    main( options, args )
+    #~ main( options, args )
+    main(  )
     
     
     
