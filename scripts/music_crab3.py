@@ -109,11 +109,13 @@ def main():
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
         log.info("Created crab config object")
         configFileName = writeCrabConfig(key,CrabConfig,options)
-        if not options.dry_run and not options.resubmit:
+        # sampleInDB may return false if notInDB option is used to submit sample
+        # which are not in aix3adb yet
+        if not options.dry_run and not options.resubmit and sampleInDB( options, dblink, key):
              controller.submit( configFileName )
         if not options.dry_run and options.resubmit:
              controller.resubmit( configFileName )
-
+        
         # submit sample to aix3adb
         #~ if options.db and not options.dry_run:
         if options.db:
@@ -121,6 +123,8 @@ def main():
         else:
             log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
             submitSample2db_dump_csv( key, SampleDict[ key ][1], SampleFileInfoDict, options )
+
+
     
 def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     global runOnMC 
@@ -416,17 +420,6 @@ def getExistingProcesses():
 
     return processes
 
-
-
-
-#~ def getGlobalTag(SampleFileInfoDict):
-    #~ pset = SampleFileInfoDict['pset'] 
-    
-    #~ with open(pset,"rb" ) as psetfile:
-        #~ cfo = imp.load_source("pycfg", pset, psetfile )
-        #~ globalTag = cfo.getGlobalTag()
-        #~ del cfo
-        #~ return globalTag
 def getGlobalTag(options):
     someCondition = False
     if options.globalTag:
@@ -454,6 +447,14 @@ def createDBlink(options):
     dblink.authorize(username = options.user)
     log.info( 'Authorized to database.' )
     return dblink
+
+def sampleInDB(options, dblink, sample):
+    try:
+        if options.notInDB:
+            dbSample = dblink.getMCSample( samplename )
+        return True
+    except Aix3adbException:    
+        return False
 
 def submitSample2db_dump_csv( samplename, datasetpath, SampleFileInfoDict, options ):
     with open('aix3q_dummy.csv', 'a') as outcsv:
@@ -505,6 +506,7 @@ def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
         mcSkim.sampleid = dbSample.id
         mcSkim.owner = options.user
         mcSkim.is_created = 1
+        mcSkim.is_deprecated  = 0
         now = datetime.datetime.now()
         mcSkim.created_at = now.strftime( "%Y-%m-%d %H-%M-%S" )
         # where to get the skimmer name ??? MUSiCSkimmer fixed
@@ -700,8 +702,8 @@ def commandline_parsing( parsingController ):
     ####################################
     parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
     parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
-    parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/configs]' )
-    parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
+    parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/configs]' )
+    parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/lumi]' )
     parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
                        help='Only submit samples matching PATTERNS (bash-like ' \
                             'patterns only, comma separated values. ' \
@@ -725,6 +727,7 @@ def commandline_parsing( parsingController ):
     parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
     parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
     parser.add_option( '--resubmit',action='store_true', default=False, help='Try to resubmit jobs instead of submit')
+    parser.add_option( '--notInDB',action='store_true', default=False, help='Only submit samples if not in aix3aDB')
     ###########################################
     # new  options for General section in pset
     ##########################################
