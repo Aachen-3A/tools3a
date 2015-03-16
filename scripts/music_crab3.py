@@ -102,7 +102,7 @@ def main():
             tempwriter = csv.writer( outcsv, delimiter=',', quotechar='"')
             if runOnMC:
                 tempwriter.writerow( ['name', 'datasetpath','generator', 'xs', 'filtler_effi', 'filter_effi_ref', 'kfactor','energy', 'globalTag', 'CMSSW_Version', 'numEvents'] )
-
+        dblink = None    
 
     # create crab config files and submit tasks
     for key in SampleDict.keys():

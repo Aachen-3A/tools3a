@@ -2,7 +2,6 @@
 from multiprocessing import Process, Condition, Lock  
 from multiprocessing.managers import BaseManager 
 import threading
-#!/usr/bin/env python
 import os,glob,sys
 import optparse
 import logging
@@ -182,6 +181,8 @@ def runGui(stdscr , options, args):
             overview.update_currentTask()
         elif c == ord('u'):
             updateFlag = True
+        elif c == ord('r'):
+            overview.resubmit_currentTask()
         elif c == curses.KEY_DOWN:
             overview.currentView.goDown()
         elif c == curses.KEY_UP:
@@ -258,22 +259,12 @@ def crab_worker(job_q, result_q, log_q):
         try:
             #~ mylogger.info('tring to git from q')
             ( state, crabTask ) = job_q.get_nowait()
-            #~ os.stat('~/.crab').st_atime 
             mylogger.info('in worker updating Task %s now state %s '% (crabTask.name ,state) )
             if "RESUBMIT" in state:
                 failedJobIds = []
                 now = datetime.datetime.now()
                 mylogger.info('in worker rseubmit taks')
-                for jobkey in crabTask.jobs.keys():
-                    job = task.jobs[jobkey]
-                    mylogger.info( 'state %s' % job['State'] )
-                    if job['State'] == 'failed':
-                        mylogger.info('Time since resubmit: \n %d' % int(now - int(job['StartTimes'][-1])) )
-                    if job['State'] == 'failed' and int( now - int(job['StartTimes'][-1]) )  > 36000:
-                        failedJobIds.append( job['JobIds'][-1] )
-                    elif job['State'] == 'failed':
-                        mylogger.error( 'job failed but not resubmitted' )
-                crabTask.resubmit_failed( self )
+                crabTask.resubmit_failed()
                 
             else:
                 crabTask.update()
@@ -400,9 +391,15 @@ class Overview:
         return self.tasktable.cursor
     
     def update_currentTask(self):
-        self.tasks[self.currentTask].state = "UPDATING"
-        self.shared_job_q.put_nowait( (self.tasks[self.currentTask].state
-                                    ,self.tasks[self.currentTask]) )
+        if self.level == 0:
+            self.tasks[self.currentTask].state = "UPDATING"
+            self.shared_job_q.put_nowait( (self.tasks[self.currentTask].state
+                                        ,self.tasks[self.currentTask]) )
+    def resubmit_currentTask(self):
+        if self.level == 0:
+            self.tasks[self.currentTask].state = "RESUBMIT"
+            self.shared_job_q.put_nowait( (self.tasks[self.currentTask].state
+                                        ,self.tasks[self.currentTask]) )
     def down(self):
         self.stdscr.clear()
         self.level=min(self.level+1,2)
@@ -424,7 +421,7 @@ def addInfoHeader(stdscr, options):
     stdscr.addstr(0, 0, ("{0:^"+str(stdscr.getmaxyx()[1])+"}").format("watchfrog quark...quark"), curses.A_REVERSE)
     #~ self.stdscr.addstr(0, 0, ("{0:^"+str(self.stdscr.getmaxyx()[1])+"}").format(self.asciiFrog), curses.A_REVERSE)
     #~ self.stdscr.addstr(8, 0, "Exit: q  Raise/lower update interval: +/- ("+str(options.updateInterval)+"s)  Update:  <SPACE>")
-    stdscr.addstr(1, 0, "Exit: q  Raise/lower update interval: +/- ("+str(options.updateInterval)+"s)  Update:  <SPACE>")
+    stdscr.addstr(1, 0, "Exit: q  Raise/lower update interval: +/- ("+str(options.updateInterval)+"s)  Update Task:  <SPACE> Update all: <u> Resubmit failed: <r>")
 
 def timerepr(deltat):
     """Return formatted time interval
