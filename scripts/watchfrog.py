@@ -265,7 +265,6 @@ def crab_worker(job_q, result_q, log_q):
                 now = datetime.datetime.now()
                 mylogger.info('in worker rseubmit taks')
                 crabTask.resubmit_failed()
-                
             else:
                 crabTask.update()
             mylogger.info('in worker updated Task %s now state %s '% (crabTask.name, crabTask.state ) )
