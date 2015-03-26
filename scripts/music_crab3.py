@@ -102,7 +102,7 @@ def main():
             tempwriter = csv.writer( outcsv, delimiter=',', quotechar='"')
             if runOnMC:
                 tempwriter.writerow( ['name', 'datasetpath','generator', 'xs', 'filtler_effi', 'filter_effi_ref', 'kfactor','energy', 'globalTag', 'CMSSW_Version', 'numEvents'] )
-        dblink = None    
+        dblink = None
 
     # create crab config files and submit tasks
     for key in SampleDict.keys():
@@ -211,12 +211,12 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
             config.set( 'Data', 'runRange', lumi_mask )
     else:
         config.set( 'Data', 'splitting', 'FileBased' )
-        dbshelper = dbutilscms.DBSUtilities()
-        DatasetSummary = dbshelper.getDatasetSummary(sample)
-        SampleFileInfoDict.update({'dbsInfos':DatasetSummary})
+        dasHelper = dbutilscms.dasClientHelper()
+        DatasetSummary = dasHelper.getDatasetSummary( sample )
+        SampleFileInfoDict.update({'dasInfos':DatasetSummary})
         try:
             #~ print DatasetSummary
-            filesPerJob =  int((float(options.eventsPerJob) * int(DatasetSummary['numFiles'])) /  int(DatasetSummary['numEvents']) )
+            filesPerJob =  int((float(options.eventsPerJob) * int(DatasetSummary['nfiles'])) /  int(DatasetSummary['nevents']) )
             if filesPerJob < 1:
                 filesPerJob = 1
         except:
@@ -475,7 +475,7 @@ def submitSample2db_dump_csv( samplename, datasetpath, SampleFileInfoDict, optio
                    SampleFileInfoDict['energy'],
                    SampleFileInfoDict['globalTag'],
                    os.getenv( 'CMSSW_VERSION' ),
-                   SampleFileInfoDict['dbsInfos']['numEvents'] ]
+                   SampleFileInfoDict['dasInfos']['nevents'] ]
         tempwriter.writerow(line)
 
 
@@ -516,7 +516,7 @@ def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
         mcSkim.skimmer_name = "MUSiCSkimmer"
         mcSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
         mcSkim.skimmer_globaltag = SampleFileInfoDict['globalTag']
-        mcSkim.nevents = SampleFileInfoDict['dbsInfos']['numEvents']
+        mcSkim.nevents = SampleFileInfoDict['dasInfos']['nevents']
         dblink.insertMCSkim( mcSkim )
 
 
