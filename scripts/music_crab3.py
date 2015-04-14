@@ -4,9 +4,9 @@
 # MUSiC wrapper for crab3
 #
 # music_crab is a wrapper script that has been developed
-# to submit the large number of tasks (more or less) automatically, 
-# needed to get all data and MC. The script automatically creates CRAB 
-# config files according to the dataset file provided. 
+# to submit the large number of tasks (more or less) automatically,
+# needed to get all data and MC. The script automatically creates CRAB
+# config files according to the dataset file provided.
 # crab3 rebuilds the previous crab2 functionality and relies on the work
 # in the previous version
 # @author Tobias Pook
@@ -35,9 +35,9 @@ COMMENT_CHAR = '#'
 log_choices = [ 'ERROR', 'WARNING', 'INFO', 'DEBUG' ]
 date = '%F %H:%M:%S'
 
-skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject' )
-lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/lumi' )
-config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/MUSiCProject/Skimming/test/configs' )
+skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer' )
+lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/lumi' )
+config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/configs' )
 
 # Write everything into a log file in the directory you are submitting from.
 log = logging.getLogger( 'music_crab' )
@@ -57,9 +57,9 @@ def main():
     (options, args ) = commandline_parsing( controller )
     # Setup logging for music_crab
     setupLogging(options)
-    
+
     log.info("Starting music_crab3")
-    
+
     # Read additional information from music_crab config file
     if(len(args))> 0:
         #get SampleFile from command line argument
@@ -70,7 +70,7 @@ def main():
     else:
         log.error("no config file specified.")
         sys.exit(1)
-        
+
     # Check if the current commit is tagged or tag it otherwise
     if not options.noTag:
         try:
@@ -81,19 +81,19 @@ def main():
             sys.exit( 3 )
     else:
         SampleFileInfoDict.update({'gitTag':'noTag'})
-        
+
     log.info("after tag")
     log.info(controller.checkusername())
-    
+
     # first check if user has permission to write to selected site
     #~ if not controller.checkwrite():sys.exit(1)
-    
+
     # extract the global tag for the used config file
     #~ globalTag = log.info("using global tag: %s" % getGlobalTag(SampleFileInfoDict))
     globalTag =  getGlobalTag(options)
     log.info("using global tag: %s" % globalTag)
     SampleFileInfoDict.update({'globalTag':globalTag})
-    
+
     # create a connection to aix3adb if necessary
     if options.db:
         dblink = createDBlink(options)
@@ -102,38 +102,41 @@ def main():
             tempwriter = csv.writer( outcsv, delimiter=',', quotechar='"')
             if runOnMC:
                 tempwriter.writerow( ['name', 'datasetpath','generator', 'xs', 'filtler_effi', 'filter_effi_ref', 'kfactor','energy', 'globalTag', 'CMSSW_Version', 'numEvents'] )
-            
-        
+        dblink = None
+
     # create crab config files and submit tasks
     for key in SampleDict.keys():
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
         log.info("Created crab config object")
         configFileName = writeCrabConfig(key,CrabConfig,options)
-        if not options.dry_run and not options.resubmit:
+        # sampleInDB may return false if notInDB option is used to submit sample
+        # which are not in aix3adb yet
+        if not options.dry_run and not options.resubmit and sampleInDB( options, dblink, key):
              controller.submit( configFileName )
         if not options.dry_run and options.resubmit:
              controller.resubmit( configFileName )
 
         # submit sample to aix3adb
-        #~ if options.db and not options.dry_run:
-        if options.db:
+        if options.db and not options.dry_run:
+        #if options.db:
             submitSample2db(key, SampleDict[ key ][1], SampleFileInfoDict,options,dblink)
         else:
             log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
             submitSample2db_dump_csv( key, SampleDict[ key ][1], SampleFileInfoDict, options )
-    
+
+
 def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
-    global runOnMC 
+    global runOnMC
     global runOnData
-    global runOnGen 
-    # Parse user input    
+    global runOnGen
+    # Parse user input
     from crabConfigParser import CrabConfigParser
     config = CrabConfigParser()
     if runOnData:
         (name,sample,lumi_mask,lumisPerJob) = sampleinfo
     else:
         (name,sample) = sampleinfo
-    
+
     ### General section
     config.add_section('General')
     config.set( 'General', 'requestName', name )
@@ -143,13 +146,13 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'General', 'transferOutputs', 'True')
     if options.log:
         config.set( 'General', 'saveLogs', 'True' )
-    
+
     ### JobType section
     config.add_section('JobType')
     config.set( 'JobType', 'pluginName', 'Analysis' )
     config.set( 'JobType', 'psetName', SampleFileInfoDict['pset'] )
-    
-    
+
+
     if options.failureLimit:
         try:
             config.set( 'JobType', 'failureLimit', "%.2f"%float(options.failureLimit) )
@@ -164,15 +167,15 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     paramlist.extend(['globalTag=%s'%SampleFileInfoDict['globalTag']])
     if options.pyCfgParams:
         paramlist.append(options.pyCfgParams)
-    config.set( 'JobType', 'pyCfgParams', paramlist )   
+    config.set( 'JobType', 'pyCfgParams', paramlist )
     if options.inputFiles:
-        config.set( 'JobType', 'inputFiles', options.inputFiles ) 
+        config.set( 'JobType', 'inputFiles', options.inputFiles )
     if options.outputFiles:
         config.set( 'JobType', 'outputFiles', options.outputFiles )
     else:
         config.set( 'JobType', 'outputFiles', [name+".pxlio"]  )
     if options.allowNonProductionCMSSW:
-        config.set( 'JobType', 'allowNonProductionCMSSW', 'True' ) 
+        config.set( 'JobType', 'allowNonProductionCMSSW', 'True' )
     if options.maxmemory:
         try:
             config.set( 'JobType', 'maxmemory', "%d"%int(options.maxmemory ) )
@@ -188,16 +191,16 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
             config.set( 'JobType', 'numcores', "%d"%int(options.numcores ) )
         except:
             log.error('Option numcores not used. numcores needs integer')
-    
-    
-    ### Data section        
+
+
+    ### Data section
     config.add_section('Data')
     config.set( 'Data', 'inputDataset', sample )
     config.set( 'Data', 'inputDBS', options.inputDBS)
     config.set( 'Data', 'publication', 'False' )
     config.set( 'Data','publishDBS','phys03')
     config.set( 'Data','publishDataName',name)
-    
+
     if runOnData:
         config.set( 'Data', 'splitting', 'LumiBased' )
         config.set( 'Data', 'unitsPerJob', lumisPerJob )
@@ -208,12 +211,12 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
             config.set( 'Data', 'runRange', lumi_mask )
     else:
         config.set( 'Data', 'splitting', 'FileBased' )
-        dbshelper = dbutilscms.DBSUtilities()
-        DatasetSummary = dbshelper.getDatasetSummary(sample)
-        SampleFileInfoDict.update({'dbsInfos':DatasetSummary})
+        dasHelper = dbutilscms.dasClientHelper()
+        DatasetSummary = dasHelper.getDatasetSummary( sample )
+        SampleFileInfoDict.update({'dasInfos':DatasetSummary})
         try:
             #~ print DatasetSummary
-            filesPerJob =  int((float(options.eventsPerJob) * int(DatasetSummary['numFiles'])) /  int(DatasetSummary['numEvents']) )
+            filesPerJob =  int((float(options.eventsPerJob) * int(DatasetSummary['nfiles'])) /  int(DatasetSummary['nevents']) )
             if filesPerJob < 1:
                 filesPerJob = 1
         except:
@@ -221,37 +224,37 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
             sys.exit(1)
         config.set( 'Data', 'splitting', 'FileBased' )
         config.set( 'Data', 'unitsPerJob', '%d'%filesPerJob)
-    
+
     config.set( 'Data', 'outLFN', "/store/user/%s/MUSiC/%s/%s/"%(options.user,datetime.date.today().isoformat(),name))
-    
+
     ## set default for now, will change later
     config.set( 'Data', 'publishDataName', 'dummy' )
     if options.publish:
         config.set( 'Data', 'publication', 'True')
         # seems to be the only valid choice at the moment
-        config.set( 'Data', 'publishDBS', 'phys03') 
-    
+        config.set( 'Data', 'publishDBS', 'phys03')
+
     if options.ignoreLocality:
         config.set( 'Data', 'ignoreLocality', 'True')
-        
-    ### Site section    
+
+    ### Site section
     config.add_section('Site')
     config.set( 'Site', 'storageSite', 'T2_DE_RWTH' )
-    
-    
+
+
     if options.blacklist:
         blacklists = options.blacklist.split(',')
         config.set( 'Site', 'blacklist', blacklists )
-    
-    
+
+
     ### User section
     config.add_section('User')
     config.set( 'User', 'voGroup', 'dcms' )
-      
+
     return config
 
 def preloadProcess(name,sample,SampleFileInfoDict):
-    pset = SampleFileInfoDict['pset'] 
+    pset = SampleFileInfoDict['pset']
     file = open( pset )
     cfo = imp.load_source("pycfg", pset, file )
     del file
@@ -282,22 +285,22 @@ def writeCrabConfig(name,config,options):
         log.info( 'created crab config file %s'%filename )
     except:
         log.error("Could not create crab config file")
-    
+
     return filename
-    
+
 
 def getRunRange():
     return 'dummy'
 
 def readSampleFile(filename,options):
-    global runOnMC 
+    global runOnMC
     global runOnData
-    global runOnGen 
+    global runOnGen
     outdict = {}
     sampledict = {}
     afterConfig = False
     existing = [] #]getExistingProcesses()
-    
+
     #check if only samples matching a certain pattern should be added
     if options.only:
     # 'PATTERNS' should be a comma separated list of strings.
@@ -305,7 +308,7 @@ def readSampleFile(filename,options):
         options.only = options.only.split( ',' )
         options.only = filter( lambda x: x.strip(), options.only )
         log.debug( "Only submitting samples matching patterns '%s'." % ','.join( options.only ) )
-    
+
     with open(filename,'rb') as sample_file:
         for line in sample_file:
             line = line.strip()
@@ -337,8 +340,8 @@ def readSampleFile(filename,options):
                 pset = os.path.join( options.config_dir, pset.strip() )
                 outdict.update({'pset':pset})
                 afterConfig = True
-            if afterConfig and not "config" in line: 
-                
+            if afterConfig and not "config" in line:
+
                 skip = False
                 if options.only:
                     for pattern in options.only:
@@ -366,8 +369,11 @@ def readSampleFile(filename,options):
                 else:
                     first_part = line
                     lumi_mask = None
-
-                (name,sample) = first_part.split( ':' )
+                try:
+                    (name,sample) = first_part.split( ':' )
+                except:
+                    log.error("could not parse line: '%s'"%(first_part))
+                    sys.exit(1)
                 #~ if name in existing.keys():
                     #~ log.warning( "Found existing CRAB task (%s) with process name '%s'!" % ( existing[ name ], name ) )
                     #~ if not options.submit:
@@ -375,7 +381,7 @@ def readSampleFile(filename,options):
                         #~ log.info( "If you want to submit it anyway, run again with '--submit'." )
                         #~ skipped[ name ] = sample
                         #~ continue
-                        
+
                 if runOnData:
                     sampledict.update({name:(name,sample,lumi_mask,lumisPerJob)})
                 else:
@@ -386,14 +392,14 @@ def readSampleFile(filename,options):
     if options.config:
         pset = options.config
         outdict.update({'pset':pset})
-        
+
     if 'pset' in outdict:
-        return outdict 
+        return outdict
     else:
         log.error( 'No CMSSW config file specified!' )
         log.error( 'Either add it to the sample file or add it to the command line.' )
         sys.exit(1)
-            
+
 def getExistingProcesses():
     workdir = os.getcwd()
 
@@ -417,20 +423,10 @@ def getExistingProcesses():
     return processes
 
 
-
-
-#~ def getGlobalTag(SampleFileInfoDict):
-    #~ pset = SampleFileInfoDict['pset'] 
-    
-    #~ with open(pset,"rb" ) as psetfile:
-        #~ cfo = imp.load_source("pycfg", pset, psetfile )
-        #~ globalTag = cfo.getGlobalTag()
-        #~ del cfo
-        #~ return globalTag
 def getGlobalTag(options):
     someCondition = False
     if options.globalTag:
-        globalTag =  options.globalTag 
+        globalTag =  options.globalTag
     elif someCondition:
         log.info("this is a place where Global tags will be defined during the run")
     else:
@@ -440,12 +436,12 @@ def getGlobalTag(options):
             #~ globalTag = cms.string( autoCond[ 'com10' ] )
             globalTag =  autoCond[ 'com10' ]
         else:
-            globalTag = autoCond[ 'startup' ] 
+            globalTag = autoCond[ 'startup' ]
     return globalTag
 
 def createDBlink(options):
-    
-    
+
+
     # Create a database object.
     dblink = aix3adb.aix3adb()
 
@@ -454,6 +450,14 @@ def createDBlink(options):
     dblink.authorize(username = options.user)
     log.info( 'Authorized to database.' )
     return dblink
+
+def sampleInDB(options, dblink, sample):
+    try:
+        if options.notInDB:
+            dbSample = dblink.getMCSample( samplename )
+        return True
+    except Aix3adbException:
+        return False
 
 def submitSample2db_dump_csv( samplename, datasetpath, SampleFileInfoDict, options ):
     with open('aix3q_dummy.csv', 'a') as outcsv:
@@ -471,13 +475,13 @@ def submitSample2db_dump_csv( samplename, datasetpath, SampleFileInfoDict, optio
                    SampleFileInfoDict['energy'],
                    SampleFileInfoDict['globalTag'],
                    os.getenv( 'CMSSW_VERSION' ),
-                   SampleFileInfoDict['dbsInfos']['numEvents'] ]
+                   SampleFileInfoDict['dasInfos']['nevents'] ]
         tempwriter.writerow(line)
-                       
+
 
 def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
-    
-    # check which kind of sample to submit  
+
+    # check which kind of sample to submit
     if runOnMC:
         # get infos from McM
         mcmutil = dbutilscms.McMUtilities()
@@ -485,11 +489,11 @@ def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
         # try to get sample db entry and create it otherwise
         try:
             dbSample = dblink.getMCSample( samplename )
-        except Aix3adbException:   
+        except Aix3adbException:
             dbSample = aix3adb.MCSample()
-            dbSample.datasetpath = datasetpath 
-            dbSample.name = samplename 
-            dbSample.datasetpath= datasetpath 
+            dbSample.datasetpath = datasetpath
+            dbSample.name = samplename
+            dbSample.datasetpath= datasetpath
             dbSample.generator = SampleFileInfoDict['generator']
             dbSample.crosssection = str(mcmutil.getCrossSection())
             dbSample.filter_efficiency = mcmutil.getGenInfo('filter_efficiency')
@@ -498,23 +502,24 @@ def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
             dbSample.crosssection_reference = 'McM'
             dbSample.energy = SampleFileInfoDict['energy']
             dbSample = dblink.insertMCSample(dbSample)
-           
+
         # create a new McSkim object
         mcSkim = aix3adb.MCSkim()
         # create relation to dbsample object
         mcSkim.sampleid = dbSample.id
         mcSkim.owner = options.user
         mcSkim.is_created = 1
+        mcSkim.is_deprecated  = 0
         now = datetime.datetime.now()
         mcSkim.created_at = now.strftime( "%Y-%m-%d %H-%M-%S" )
         # where to get the skimmer name ??? MUSiCSkimmer fixed
         mcSkim.skimmer_name = "MUSiCSkimmer"
         mcSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
         mcSkim.skimmer_globaltag = SampleFileInfoDict['globalTag']
-        mcSkim.nevents = SampleFileInfoDict['dbsInfos']['numEvents']
+        mcSkim.nevents = SampleFileInfoDict['dasInfos']['nevents']
         dblink.insertMCSkim( mcSkim )
-        
-            
+
+
     elif runOnData:
         # try to get sample db entry and create it otherwise
         dbSample = dblink.getDataSample( datasetpath )
@@ -522,26 +527,26 @@ def submitSample2db(samplename, datasetpath, SampleFileInfoDict,options,dblink):
             dbSample = aix3adb.DataSample( datasetpath )
             dblink.insertDataSample( dbsample )
         dataSkim = aix3adb.DataSkim( dbSample )
-        
+
     elif runOnGen:
         log.info("Gen Samples are not saved to db")
-    
-    
+
+
 
 def submitSample2dbOld(name,sample,SampleFileInfoDict,dblink):
-    
+
     datasetInfos[ 'original_name' ] = sample
     datasetInfos[ 'energy' ] = SampleFileInfoDict['energy']
     datasetInfos[ 'iscreated' ] = 1
     datasetInfos[ 'skimmer_name' ] = 'MUSiCSkimmer'
     datasetInfos[ 'skimmer_cmssw' ] = os.getenv( 'CMSSW_VERSION' )
     datasetInfos[ 'skimmer_globaltag' ] = SampleFileInfoDict['globalTag']
-    
+
     if options.no_tag:
         datasetInfos[ 'skimmer_version' ] = 'Not tagged'
     else:
         datasetInfos[ 'skimmer_version' ] = SampleFileInfoDict['gitTag']
-    
+
     datasetTags = dict()
     datasetTags[ 'MUSiC_Skimming_cfg' ] = SampleFileInfoDict['pset']
     datasetTags[ 'MUSiC_Processname' ] = name
@@ -551,8 +556,8 @@ def submitSample2dbOld(name,sample,SampleFileInfoDict,dblink):
     # Create a text file in the crab folder to log the database ID.
     # This ID is unique for each database entry.
     DBconfig = ConfigParser.SafeConfigParser()
-    DBconfig.add_section( 'DB' )    
-    
+    DBconfig.add_section( 'DB' )
+
     if runOnMC == True:
         datasetInfos[ 'generator' ] = SampleFileInfoDict['generator']
         datasetInfos[ 'tags' ] = datasetTags
@@ -574,7 +579,7 @@ def submitSample2dbOld(name,sample,SampleFileInfoDict,dblink):
         datasetInfos[ 'jsonfile' ] = lumi_mask
         datasetTags[ 'DCSOnly_JSON' ] = DCSOnly_json
         datasetInfos[ 'tags' ] = datasetTags
-    
+
         if not options.dry_run:
             # Send all info on this Data sample to the database.
             DBentry = dblink.registerDataSample( datasetInfos )
@@ -585,7 +590,7 @@ def submitSample2dbOld(name,sample,SampleFileInfoDict,dblink):
             log.info( 'Dry-run: Would have registered this Data sample at database:\n%s' % datasetInfos )
     else:
         log.error( "Not all necessary arguments given in config: '%s'." % sample_file )
-        
+
 def createTag( options, skimmer_dir ):
     # Save the current working directory to get back here later.
     workdir = os.getcwd()
@@ -685,7 +690,7 @@ def createTag( options, skimmer_dir ):
 def setupLogging(options):
     #setup logging
     format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
-    logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )   
+    logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )
     formatter = logging.Formatter( format )
     log_file_name = 'music_crab_' + options.isodatetime + '.log'
     hdlr = logging.FileHandler( log_file_name, mode='w' )
@@ -700,8 +705,8 @@ def commandline_parsing( parsingController ):
     ####################################
     parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
     parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
-    parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/configs]' )
-    parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/MUSiCProject/Skimming/test/lumi]' )
+    parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/configs]' )
+    parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/lumi]' )
     parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
                        help='Only submit samples matching PATTERNS (bash-like ' \
                             'patterns only, comma separated values. ' \
@@ -717,31 +722,32 @@ def commandline_parsing( parsingController ):
     parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1 separated by comma, e.g. T2_DE_RWTH,T2_US_Purdue  ' )
     parser.add_option( '-D', '--db', action='store_true', default=False,
                        help="Register all datasets at the database: 'https://cern.ch/aix3adb/'. [default: %default]" )
-    #///////////////////////////////              
+    #///////////////////////////////
     #// new options since crab3
     #//////////////////////////////
-    
+
     # new feature alternative username
     parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
     parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
     parser.add_option( '--resubmit',action='store_true', default=False, help='Try to resubmit jobs instead of submit')
+    parser.add_option( '--notInDB',action='store_true', default=False, help='Only submit samples if not in aix3aDB')
     ###########################################
     # new  options for General section in pset
     ##########################################
-    parser.add_option( '--workingArea',metavar='DIR',default=os.getcwd(),help='The area (full or relative path) where to create the CRAB project directory. ' 
+    parser.add_option( '--workingArea',metavar='DIR',default=os.getcwd(),help='The area (full or relative path) where to create the CRAB project directory. '
                              'If the area doesn\'t exist, CRAB will try to create it using the mkdir command' \
-                             ' (without -p option). Defaults to the current working directory.'       )  
+                             ' (without -p option). Defaults to the current working directory.'       )
     parser.add_option( '-t', '--transferOutputs', action='store_true',default=True,help="Whether to transfer the output to the storage site"
                                                     'or leave it at the runtime site. (Not transferring the output might'\
                                                     ' be useful for example to avoid filling up the storage area with'\
-                                                    ' useless files when the user is just doing some test.) ' )  
+                                                    ' useless files when the user is just doing some test.) ' )
     parser.add_option( '--log', action='store_true',default=False,help='Whether or not to copy the cmsRun stdout /'\
                                                     'stderr to the storage site. If set to False, the last 1 MB'\
                                                     ' of each job are still available through the monitoring in '\
-                                                    'the job logs files and the full logs can be retrieved from the runtime site with') 
+                                                    'the job logs files and the full logs can be retrieved from the runtime site with')
     parser.add_option( '--failureLimit', help='The number of jobs that may fail permanently before the entire task is cancelled. '\
                                                 'Defaults to 10% of the jobs in the task. ')
-    ########################################                                    
+    ########################################
     # new options for JobType in pset
     ########################################
     parser.add_option('--pyCfgParams',default =None, help="List of parameters to pass to the CMSSW parameter-set configuration file, as explained here. For example, if set to "\
@@ -749,13 +755,13 @@ def commandline_parsing( parsingController ):
     parser.add_option('--inputFiles',help='List of private input files needed by the jobs. ')
     parser.add_option('--outputFiles',help='List of output files that need to be collected, besides those already specified in the output'\
                                                 ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
-    parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ') 
+    parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ')
     parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
-    parser.add_option('--maxJobRuntimeMin', default=72,help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72]" ) 
-    parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" ) 
+    parser.add_option('--maxJobRuntimeMin', default=72,help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72]" )
+    parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" )
     parser.add_option('--priority', help='Task priority among the user\'s own tasks. Higher priority tasks will be processed before lower priority.'\
                                                     ' Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a'\
-                                                    ' task are given a priority boost of 10. [default  10] ' ) 
+                                                    ' task are given a priority boost of 10. [default  10] ' )
     parser.add_option('-n','--name',help="Music Process name [default: /Music/{current_date}/]")
     parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: False]")
     ####################################
@@ -768,26 +774,26 @@ def commandline_parsing( parsingController ):
                                                         " and Site.blacklist are still respected. This parameter is useful to allow "\
                                                         "jobs to run on other sites when for example a dataset is available on only one"\
                                                         " or a few sites which are very busy with jobs. Defaults to False. ")
-    
+
     # we need to add the parser options from other modules
     #get crab command line options
     parsingController.commandlineOptions(parser)
-    
+
     (options, args ) = parser.parse_args()
     now = datetime.datetime.now()
     isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
     options.isodatetime = isodatetime
-    
+
     # check if user has valid proxy
-    import gridFunctions 
+    import gridFunctions
     gridFunctions.checkAndRenewVomsProxy()
-    
+
     #get current user HNname
     if not options.user:
         options.user = parsingController.checkusername()
-        
+
     return (options, args )
-    
+
 if __name__ == '__main__':
     main()
 

@@ -69,7 +69,7 @@ def checkTask(task, resubmitJobs, killJobs):
     if len(resubmitJobs) > 0:
         task.resubmit(resubmitJobs, processes=6)
     status = task.getStatus()
-    task.getOutput(4)
+    task.getOutput(6)
     status = task.getStatus()
     return task
 
@@ -263,7 +263,7 @@ class Overview:
                 except:
                     x.addText("stderr","could not find stderr")
             x.addFile("jdl file", os.path.join(self.tasks[self.currentTask].directory,self.tasks[self.currentTask].jobs[self.currentJob].jdlfilename))
-                    
+
             self.currentView=x
         self.currentView.refresh()
 
@@ -280,7 +280,7 @@ def main(stdscr, options, args, passphrase):
 
     # catch sigterm to terminate gracefully
     signal.signal(signal.SIGTERM, terminate)
-    # curses color pairs 
+    # curses color pairs
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
@@ -289,7 +289,10 @@ def main(stdscr, options, args, passphrase):
     taskList, resubmitList, killList = [], [], []
     # load tasks from directories
     for directory in args:
-        task = cesubmit.Task.load(directory)
+        try:
+            task = cesubmit.Task.load(directory)
+        except:
+            continue
         taskList.append(task)
         resubmitList.append(set())
         killList.append(set())
@@ -297,7 +300,7 @@ def main(stdscr, options, args, passphrase):
     stdscr.keypad(1)
     updateInterval=600
     lastUpdate=datetime.datetime.now()
-    
+
     # paint top rows
     stdscr.addstr(0, 0, ("{0:^"+str(stdscr.getmaxyx()[1])+"}").format("television"), curses.A_REVERSE)
     stdscr.timeout(1000)
@@ -341,22 +344,16 @@ def main(stdscr, options, args, passphrase):
                 if passphrase:
                     cesubmit.checkAndRenewVomsProxy(648000, passphrase=passphrase)
                     certtime=datetime.timedelta(seconds=cesubmit.timeLeftVomsProxy())+datetime.datetime.now()
-                if False:  #set to true for serious debugging, this disables the multiprocessing
-                    for task in taskList:
-                        checkTask(task)
-                    overview.update(taskList, resubmitList, killList, nextTaskId)
-                    lastUpdate = datetime.datetime.now()
-                else:
-                    # prepare parameters
-                    parameters = [taskList[nextTaskId], resubmitList[nextTaskId], killList[nextTaskId]]
-                    # use one process only, actual multiprocessing is handled within this process (multiple jobs per tasks are retrieved)
-                    pool = NoDaemonPool(1)
-                    result = pool.apply_async(checkTask, parameters)
-                    pool.close()
-                    # reset resubmit list for this task
-                    resubmitList[nextTaskId], killList[nextTaskId] = set(), set()
-                    waitingForUpdate = nextTaskId
-                    nextTaskId = (nextTaskId+1) % len(taskList)
+                # prepare parameters
+                parameters = [taskList[nextTaskId], resubmitList[nextTaskId], killList[nextTaskId]]
+                # use one process only, actual multiprocessing is handled within this process (multiple jobs per tasks are retrieved)
+                pool = NoDaemonPool(1)
+                result = pool.apply_async(checkTask, parameters)
+                pool.close()
+                # reset resubmit list for this task
+                resubmitList[nextTaskId], killList[nextTaskId] = set(), set()
+                waitingForUpdate = nextTaskId
+                nextTaskId = (nextTaskId+1) % len(taskList)
 
         # user key press processing
         c = stdscr.getch()
@@ -435,7 +432,10 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
     if options.dump:
         for directory in args:
-            task = cesubmit.Task.load(directory)
+            try:
+                task = cesubmit.Task.load(directory)
+            except:
+                continue
             pp = pprint.PrettyPrinter(indent=2)
             pp.pprint(task.__dict__)
             for job in task.jobs:
@@ -452,4 +452,4 @@ if __name__ == "__main__":
                 cesubmit.renewVomsProxy(passphrase=passphrase)
         curses.wrapper(main, options, args, passphrase)
         #curseshelpers.outputWrapper(main, 5, options, args, passphrase)
-    
+
