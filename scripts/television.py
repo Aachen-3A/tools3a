@@ -110,6 +110,17 @@ def addToList(taskList, myList, overview):
         # add one job
         myList[overview.currentTask].add(overview.currentJob)
 
+def clearFinishedJobs(taskList):
+    """remove done jobs from the list
+    """
+    removeList=[]
+    for t in taskList:
+        if t.frontEndStatus == "RETRIEVED":
+            removeList.append(t)
+    for t in removeList:
+        taskList.remove(t)
+
+
 def getRunTimeFromHistory(history):
     starttime = [int(item[1]) for item in history if item[0] == "RUNNING"]
     endtime = [int(item[1]) for item in history if "DONE" in item[0]]
@@ -412,6 +423,12 @@ def main(stdscr, options, args, passphrase):
         elif c==ord('K'):
             addToList(taskList, killList, True)
             overview.update(taskList, resubmitList, killList, nextTaskId)
+        elif c==ord('c'):
+            clearFinishedJobs(taskList)
+            overview = Overview(stdscr, taskList, resubmitList, killList, 0)
+        elif c==ord('C'):
+            clearFinishedJobs(taskList)
+            overview = Overview(stdscr, taskList, resubmitList, killList, 0)
         elif c==ord('t'):
             logger.warning("warning")
             logger.info("info")
