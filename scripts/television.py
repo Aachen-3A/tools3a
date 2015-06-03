@@ -60,6 +60,9 @@ def timerepr(deltat):
     if minutes: return "in {0}m {1}s".format(minutes, seconds)
     return "in {0}s".format(seconds)
 
+def runParralellTask(direcory):
+    subprocess.call("wurlitzer.py",direcory)
+
 def checkTask(task, resubmitJobs, killJobs):
     """perform actions on a task
     resubmit jobs, get status, get output and get status again
@@ -68,6 +71,8 @@ def checkTask(task, resubmitJobs, killJobs):
         task.kill(killJobs, processes=6)
     if len(resubmitJobs) > 0:
         task.resubmit(resubmitJobs, processes=6)
+    if task.frontEndStatus=="RETRIEVED":
+        return task
     status = task.getStatus()
     task.getOutput(6)
     status = task.getStatus()
@@ -330,7 +335,7 @@ def main(stdscr, options, args, passphrase):
         # main loop
         stdscr.addstr(1, 0, "Exit <q>  Raise/lower update interval <+>/<-> ("+str(updateInterval)+")  More information <return>  Update <space>   ")
         stdscr.addstr(2, 0, "Resubmit by Status:  Aborted <1>, Done-Failed <2>, (Really-)Running <3>, None <4>, Done-Ok exit!=0 <5>")
-        stdscr.addstr(3, 0, "Resubmit job/task <r>   Resubmit all tasks <R>    Kill job/task <k>   Kill all tasks <K>")
+        stdscr.addstr(3, 0, "Resubmit job/task <r> Resubmit all tasks <R>  Kill job/task <k> Kill all tasks <K> clear fini <cC>")
         stdscr.addstr(4, 0, "Next update {0}       ".format(timerepr(nextUpdate(lastUpdate, updateInterval, nextTaskId))))
         stdscr.addstr(5, 0, "Certificate expires {0}       ".format(timerepr(certtime-datetime.datetime.now())))
         if waitingForExit:
@@ -358,6 +363,11 @@ def main(stdscr, options, args, passphrase):
                 # prepare parameters
                 parameters = [taskList[nextTaskId], resubmitList[nextTaskId], killList[nextTaskId]]
                 # use one process only, actual multiprocessing is handled within this process (multiple jobs per tasks are retrieved)
+
+                #prepared but needs more testing to activate!!
+                #pool2 = NoDaemonPool(1)
+                #result2 = pool2.apply_async(runParralellTask,[args])
+                #pool2.close()
                 pool = NoDaemonPool(1)
                 result = pool.apply_async(checkTask, parameters)
                 pool.close()
