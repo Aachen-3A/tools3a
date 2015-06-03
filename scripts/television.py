@@ -61,12 +61,15 @@ def timerepr(deltat):
     return "in {0}s".format(seconds)
 
 def runParralellTask(direcory):
-    subprocess.call("wurlitzer.py",direcory)
+    subprocess.call("wurlitzer.py",direcory,shell=True)
 
 def checkTask(task, resubmitJobs, killJobs):
     """perform actions on a task
     resubmit jobs, get status, get output and get status again
     """
+
+    #reload the dict (to be shure)
+    task = cesubmit.Task.load(task.directory)
     if len(killJobs) > 0:
         task.kill(killJobs, processes=6)
     if len(resubmitJobs) > 0:
@@ -365,7 +368,7 @@ def main(stdscr, options, args, passphrase):
                 # use one process only, actual multiprocessing is handled within this process (multiple jobs per tasks are retrieved)
 
                 #prepared but needs more testing to activate!!
-                #pool2 = NoDaemonPool(1)
+                #pool2 = NoDaemonPool(2)
                 #result2 = pool2.apply_async(runParralellTask,[args])
                 #pool2.close()
                 pool = NoDaemonPool(1)

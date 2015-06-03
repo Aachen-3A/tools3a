@@ -37,13 +37,10 @@ def checkTask(item):
 
 def linearStatusgetter(taskList,resubmitList,killList):
     q=[]
-    for task in taskList:
+    for itask,task in enumerate(taskList):
         if task.frontEndStatus=="RETRIEVED":
             continue
-        if options.verbose:
-            print "get %s"%task.name
-
-        q.append([task,resubmitList,killList])
+        q.append([task,resubmitList[itask],killList[itask]])
     pool = multiprocessing.Pool(10)
     result = pool.map_async(checkTask, q)
     pool.close()
@@ -147,7 +144,7 @@ def main( options, args):
                 jobStati[task.frontEndStatus]+=1
             else:
                 jobStati[task.frontEndStatus]=0
-        print "job summery:"
+        print "Task summery:"
         for stati in jobStati:
             print "%s: %d"%(stati,jobStati[stati])
 
