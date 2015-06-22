@@ -278,7 +278,7 @@ def crab_worker(job_q, result_q, log_q):
 
 def getAllCrabFolders(options):
     # get all crab folders in working directory
-    crabFolders = [f for f in os.listdir(options.workingArea) if os.path.isdir(os.path.join(options.workingArea, f))]
+    crabFolders = [f for f in os.listdir(options.workingArea) if os.path.isdir(os.path.join(options.workingArea, f)) and "crab_" in f]
     # check if only folders, which match certain patterns should be watched
     if options.only:
         filteredFolders = []
@@ -341,7 +341,7 @@ class Overview:
                 job = task.jobs[jobkey]
                 if not 'EndTimes' in job.keys():
                     jobendtimes = ''
-                if len(job['EndTimes']) > 0:
+                elif len(job['EndTimes']) > 0:
                     jobendtimes = formatedUnixTimestamp(job['EndTimes'][-1])
                 else:
                     jobendtimes = ''
