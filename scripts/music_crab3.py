@@ -725,11 +725,13 @@ def setupLogging(options):
     #setup logging
     format = '%(levelname)s (%(name)s) [%(asctime)s]: %(message)s'
     logging.basicConfig( level=logging._levelNames[ options.debug ], format=format, datefmt=date )
+    log.setLevel(logging._levelNames[ options.debug ])
     formatter = logging.Formatter( format )
     log_file_name = 'music_crab_' + options.isodatetime + '.log'
     hdlr = logging.FileHandler( log_file_name, mode='w' )
     hdlr.setFormatter( formatter )
     log.addHandler( hdlr )
+    logging.getLogger('CRAB3').propagate = False  # Avoid any CRAB message to propagate up to the handlers of the root logger.
 
 def commandline_parsing( parsingController ):
     ##parse user input
