@@ -132,7 +132,6 @@ def main():
                 else:
                     file = open( gen_file_name, 'w' )
                     print >> file, 'generator = ' + gen[0].upper()
-                    print >> file, 'generator = ' + gen[0].upper()
                     print >> file, 'CME = ' + options.cme
                     print >> file, 'config = ' + options.config
                     print >> file
@@ -184,13 +183,21 @@ def abbrDatasetName( datasetName ):
     datasetName = datasetName.replace( '/', '' )
     # FIXME: This should be in a config file or something.
     #
-    tags = [ 'AODSIM',
+    tags = [ 'MINIAODSIM',
+             'AODSIM',
              '.8TeV',
              '.7TeV',
+             #~ '13TeV',
+             'DR74',
+             '25ns',
+             'RunIISpring15',
              'Fall11',
+             '.Asympt',
              'Summer12_DR53X',
              'Summer12',
+             #~ '.Spring15',
              '.TuneZ2Star',
+             '.TuneCUETP8M1',
              '.TuneZ2',
              '.Tune4C',
              '.TuneD6T',
@@ -205,6 +212,12 @@ def abbrDatasetName( datasetName ):
              '.START.._V.',
              '.START.._V..',
              '.START.._V...',
+             '.MCRUN2_.._V.-v.',
+             '.MCRUN2_.._V..-v.',
+             '.MCRUN2.._V...-v.',
+             '.MCRUN2.._V.',
+             '.MCRUN2.._V..',
+             '.MCRUN2.._V...',
              '.tauola',
              '.evtgen',
              '.photos',
