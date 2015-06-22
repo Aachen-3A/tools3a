@@ -74,7 +74,7 @@ def main():
     # Check if the current commit is tagged or tag it otherwise
     if not options.noTag:
         try:
-            gitTag = createTag( options, skimmer_dir )
+            gitTag = createTag( options )
             SampleFileInfoDict.update({'gitTag':gitTag})
         except Exception, e:
             log.error( e )
@@ -591,7 +591,7 @@ def submitSample2dbOld(name,sample,SampleFileInfoDict,dblink):
     else:
         log.error( "Not all necessary arguments given in config: '%s'." % sample_file )
 
-def createTag( options, skimmer_dir ):
+def createTag( options ):
     # Save the current working directory to get back here later.
     workdir = os.getcwd()
 
@@ -616,28 +616,8 @@ def createTag( options, skimmer_dir ):
                 return False
             return True
 
-    def gitTag( tag, skimmer_dir ):
-        os.chdir( skimmer_dir )
-
-        log.info( "Creating tag in '%s'" % skimmer_dir )
-
-        message = "'Auto-tagged by music_crab!'"
-        cmd = [ 'git', 'tag', '-a', tag, '-m', message ]
-        log.debug( 'Calling git command: ' + ' '.join( cmd ) )
-        retcode = subprocess.call( cmd )
-
-        if retcode != 0:
-            log.warning( "Failed command: " + ' '.join( cmd ) )
-            return False
-        else:
-            log.info( "Created git tag '%s' in '%s'" % ( tag, skimmer_dir ) )
-            return True
-
-    if not gitCheckRepo( skimmer_dir ):
-        raise Exception( "git repository in '%s' dirty!" % skimmer_dir )
-
-    # The tag is always the date and time with a 'v' prefixed.
-    tag = 'v' + options.isodatetime
+    if not gitCheckRepo( options.ana_dir ):
+        raise Exception( "git repository in '%s' dirty!" % options.ana_dir )
 
     # Call git to see if the commit is already tagged.
     cmd = [ 'git', 'log', '-1', '--pretty=%h%d', '--decorate=full' ]
@@ -650,7 +630,7 @@ def createTag( options, skimmer_dir ):
 
     success = False
     if not 'tags' in line:
-        success = gitTag( tag, skimmer_dir )
+        return 'noTag'
     else:
         commit, line = line.split( ' ', 1 )
         info = line.split( ',' )
@@ -665,19 +645,7 @@ def createTag( options, skimmer_dir ):
         for part in info:
             if 'tags' in part:
                 tags.append( part.strip( '() ' ).split( '/' )[-1] )
-
-        log.debug( "In commit '" + commit + "', found tags: " + ', '.join( tags ) )
-
-        pattern = r'v\d\d\d\d-\d\d-\d\d_\d\d.\d\d.\d\d'
-        for t in tags:
-            matched = re.match( pattern, t )
-            if matched:
-                log.info( "Found tag '%s', not creating a new one!" % t )
-                tag = t
-                break
-        else:
-            success = gitTag( tag, skimmer_dir )
-
+    tag = tags[0]
     os.chdir( workdir )
 
     log.info( "Using Skimmer version located in '%s'." % skimmer_dir )
