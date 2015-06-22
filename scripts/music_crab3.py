@@ -14,6 +14,7 @@
 import datetime
 import os, csv
 import sys
+import shutil
 import time
 import re
 import logging
@@ -35,9 +36,7 @@ COMMENT_CHAR = '#'
 log_choices = [ 'ERROR', 'WARNING', 'INFO', 'DEBUG' ]
 date = '%F %H:%M:%S'
 
-skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer' )
-lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/lumi' )
-config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/configs' )
+
 
 # Write everything into a log file in the directory you are submitting from.
 log = logging.getLogger( 'music_crab' )
@@ -199,8 +198,10 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'General', 'workArea', options.workingArea )
     if options.transferOutputs:
         config.set( 'General', 'transferOutputs', 'True')
-    if options.log:
-        config.set( 'General', 'saveLogs', 'True' )
+    if options.nolog:
+        config.set( 'General', 'transferLogs', 'False' )
+    else:
+        config.set( 'General', 'transferLogs', 'True' )
 
     ### JobType section
     config.add_section('JobType')
@@ -280,10 +281,11 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'Data', 'splitting', 'FileBased' )
         config.set( 'Data', 'unitsPerJob', '%d'%filesPerJob)
 
-    config.set( 'Data', 'outLFN', "/store/user/%s/MUSiC/%s/%s/"%(options.user,datetime.date.today().isoformat(),name))
+    outdir = "/store/user/%s/%s/%s/%s/"%(options.user, options.name,  SampleFileInfoDict['gitTag'] ,name)
+    config.set( 'Data', 'outLFNDirBase', outdir.replace("//", "/" ) )
 
     ## set default for now, will change later
-    config.set( 'Data', 'publishDataName', 'dummy' )
+    config.set( 'Data', 'publishDataName', SampleFileInfoDict['globalTag'] )
     if options.publish:
         config.set( 'Data', 'publication', 'True')
         # seems to be the only valid choice at the moment
@@ -714,7 +716,7 @@ def createTag( options ):
     tag = tags[0]
     os.chdir( workdir )
 
-    log.info( "Using Skimmer version located in '%s'." % skimmer_dir )
+    log.info( "Using Skimmer version located in '%s'." % options.ana_dir )
 
     if success:
         log.info( "Using Skimmer version tagged with '%s'." % tag )
@@ -739,10 +741,14 @@ def commandline_parsing( parsingController ):
     # The following options
     # were already present in muic_crab
     ####################################
+    skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer' )
+    lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/lumi' )
+    config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/configs' )
     parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
     parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
     parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/configs]' )
     parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/lumi]' )
+    parser.add_option( '--ana-dir', metavar='DIR', default=skimmer_dir, help='Directory containing the analysis [default: $CMSSW_BASE/src/PxlSkimmer/]' )
     parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
                        help='Only submit samples matching PATTERNS (bash-like ' \
                             'patterns only, comma separated values. ' \
@@ -766,6 +772,7 @@ def commandline_parsing( parsingController ):
     parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
     parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
     parser.add_option( '--resubmit',action='store_true', default=False, help='Try to resubmit jobs instead of submit')
+    parser.add_option( '--force',action='store_true', default=False, help='Delete existing crab folder and resubmit tasks')
     parser.add_option( '--notInDB',action='store_true', default=False, help='Only submit samples if not in aix3aDB')
     ###########################################
     # new  options for General section in pset
@@ -777,7 +784,7 @@ def commandline_parsing( parsingController ):
                                                     'or leave it at the runtime site. (Not transferring the output might'\
                                                     ' be useful for example to avoid filling up the storage area with'\
                                                     ' useless files when the user is just doing some test.) ' )
-    parser.add_option( '--log', action='store_true',default=False,help='Whether or not to copy the cmsRun stdout /'\
+    parser.add_option( '--nolog', action='store_true',default=False,help='Whether or not to copy the cmsRun stdout /'\
                                                     'stderr to the storage site. If set to False, the last 1 MB'\
                                                     ' of each job are still available through the monitoring in '\
                                                     'the job logs files and the full logs can be retrieved from the runtime site with')
@@ -793,12 +800,13 @@ def commandline_parsing( parsingController ):
                                                 ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
     parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ')
     parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
-    parser.add_option('--maxJobRuntimeMin', default=72,help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72]" )
+    parser.add_option('--maxJobRuntimeMin',help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72]" )
     parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" )
     parser.add_option('--priority', help='Task priority among the user\'s own tasks. Higher priority tasks will be processed before lower priority.'\
                                                     ' Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a'\
                                                     ' task are given a priority boost of 10. [default  10] ' )
-    parser.add_option('-n','--name',help="Music Process name [default: /Music/{current_date}/]")
+    parser.add_option('-n','--name', default="PxlSkim" ,
+                      help="Name for this analysis run (E.g. Skim Campaign Name) [default: %default]")
     parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: False]")
     ####################################
     # new options for Data in pset
