@@ -52,12 +52,13 @@ import FWCore.ParameterSet.Config as cms
 def main():
     # get controller object for contacts with crab
     #~ controller =  CrabController(logger = log)
-    controller =  CrabController()
+    controller =  CrabController(debug = 0)
     # Parse user input from command line
     (options, args ) = commandline_parsing( controller )
     # Setup logging for music_crab
     setupLogging(options)
-
+    # adjust options for CrabController
+    controller.dry_run = options.dry_run
     log.info("Starting music_crab3")
 
     # Read additional information from music_crab config file
@@ -86,10 +87,9 @@ def main():
     log.info(controller.checkusername())
 
     # first check if user has permission to write to selected site
-    #~ if not controller.checkwrite():sys.exit(1)
+    if not controller.checkwrite():sys.exit(1)
 
     # extract the global tag for the used config file
-    #~ globalTag = log.info("using global tag: %s" % getGlobalTag(SampleFileInfoDict))
     globalTag =  getGlobalTag(options)
     log.info("using global tag: %s" % globalTag)
     SampleFileInfoDict.update({'globalTag':globalTag})
