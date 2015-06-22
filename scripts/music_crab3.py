@@ -98,32 +98,87 @@ def main():
     if options.db:
         dblink = createDBlink(options)
     else:
-        with open('aix3q_dummy.csv', 'a') as outcsv:
-            tempwriter = csv.writer( outcsv, delimiter=',', quotechar='"')
-            if runOnMC:
-                tempwriter.writerow( ['name', 'datasetpath','generator', 'xs', 'filtler_effi', 'filter_effi_ref', 'kfactor','energy', 'globalTag', 'CMSSW_Version', 'numEvents'] )
         dblink = None
+
+    # create variables for job submission stats
+    tasks_submitted = []
+    tasks_existing = []
+    tasks_successful = []
 
     # create crab config files and submit tasks
     for key in SampleDict.keys():
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
         log.info("Created crab config object")
         configFileName = writeCrabConfig(key,CrabConfig,options)
-        # sampleInDB may return false if notInDB option is used to submit sample
+
+
+        # sampleInDB returns false if notInDB option is used to submit sample
         # which are not in aix3adb yet
-        if not options.dry_run and not options.resubmit and sampleInDB( options, dblink, key):
-             controller.submit( configFileName )
-        if not options.dry_run and options.resubmit:
-             controller.resubmit( configFileName )
+        if not options.resubmit and sampleInDB( options, dblink, key):
+            #check if crab folder exists
+            if not os.path.isdir( "crab_" + key ):
+                try:
+                    controller.submit( configFileName )
+                except HTTPException:
+                    # Try resubmit once
+                    controller.submit( configFileName )
+                submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
+                tasks_submitted.append( ( key, time.time() ) )
+            # Delete folder and submit if --force option is used
+            elif options.force:
+                shutil.rmtree( "crab_" + key )
+                controller.submit( configFileName )
+                submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
+                tasks_submitted.append( ( key, time.time() ) )
+            else:
+                log.warning('Existing CRAB folder for tasks: %s not '\
+                            'found (use force to submit anyway)' % key)
+                submitSample2db_dump_csv( key,"fail", SampleDict[ key ][1], SampleFileInfoDict, options )
+                tasks_existing.append( ( key, 'EXISTING' ) )
+        if options.resubmit:
+            controller.resubmit( configFileName )
+            tasks_submitted.append( ( key, time.time() ) )
+            submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
 
-        # submit sample to aix3adb
-        if options.db and not options.dry_run:
-        #if options.db:
-            submitSample2db(key, SampleDict[ key ][1], SampleFileInfoDict,options,dblink)
-        else:
-            log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
-            submitSample2db_dump_csv( key, SampleDict[ key ][1], SampleFileInfoDict, options )
+    #~ # check if submission was successful and add to aix3adb if --db option used
+    #~ for taskTuple in tasks_submitted:
+        #~ samplename = taskTuple[ 0 ]
+        #~ timeDelta = time.time() - taskTuple[ 1 ]
+        #~ # give crab3 server some time to create jobs
+        #~ log.info( "Give crab3 30 seconds for job submission %d left" % int(timeDelta) )
+        #~ while timeDelta < 30:
+            #~ time.sleep(2)
+            #~ timeDelta = time.time() - taskTuple[ 1 ]
+#~
+        #~ # check if sample was successfuly submitted res['status'], res['jobs']
+        #~ taskStatus, Jobs = controller.status( samplename )
+        #~ if taskStatus in ( 'QUEUED', 'SUBMITTED', 'FINISHED'):
+            #~ tasks_successful.append( samplename )
+            #~ # submit sample to aix3adb
+            #~ if options.db and not options.dry_run:
+            #~ #if options.db:
+                #~ submitSample2db(key, SampleDict[ key ][1], SampleFileInfoDict,options,dblink)
+                #~ submitSample2db_dump_csv( samplename,"success", SampleDict[ samplename ][1], SampleFileInfoDict, options )
+            #~ else:
+                #~ log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
+                #~ submitSample2db_dump_csv( samplename,"success", SampleDict[ samplename ][1], SampleFileInfoDict, options )
+        #~ else:
+            #~ submitSample2db_dump_csv( samplename,"fail", SampleDict[ samplename ][1], SampleFileInfoDict, options )
 
+    # print some global stats for submission
+    if len( tasks_existing ) > 0:
+        log.warning( " Some samples were not submitted because a crab folder already existed" )
+        log.warning( " Use the --force option to submit anyway" )
+        log.warning( " List of existing samples" )
+        [ log.warning( task ) for task in tasks_existing ]
+
+    if ( len( tasks_submitted ) - len( tasks_successful ) ) < 1:
+        log.info( "All samples submitted successfuly" )
+    else:
+        log.info( "Submission successful for %.0f%% of all samples" %
+                ( 1. * len(tasks_successful ) / len(tasks_submitted)) )
+        log.warning( "Submission failed for some samples:" )
+        [ log.warning( task ) for task in tasks_successful ]
 
 def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     global runOnMC
