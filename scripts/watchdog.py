@@ -174,8 +174,9 @@ def main():
     sample = crabSamples[0]
     dblink = createDBlink()
     skipped_final = []
-
-    with open('finalSample','a') as finalFile:
+    if not os.path.exists('finalSample'):
+        open('finalSample', 'a').close()
+    with open('finalSample','r') as finalFile:
         finalsamples = finalFile.read()
         finalsamples = finalsamples.split("\n")
     i = 0
