@@ -514,14 +514,24 @@ def sampleInDB(options, dblink, sample):
     except Aix3adbException:
         return False
 
-def submitSample2db_dump_csv( samplename, datasetpath, SampleFileInfoDict, options ):
-    with open('aix3q_dummy.csv', 'a') as outcsv:
+def submitSample2db_dump_csv( samplename, prefix, datasetpath, SampleFileInfoDict, options ):
+    csv_filename = 'aix3adb_%s_%s.csv' % ( prefix, SampleFileInfoDict['generator'])
+    if not os.path.exists( csv_filename ):
+        writeheader = True
+    else:
+        writeheader = False
+    with open(csv_filename, 'a') as outcsv:
         tempwriter = csv.writer( outcsv, delimiter=',', quotechar='"')
         mcmutil = dbutilscms.McMUtilities()
         mcmutil.readURL( datasetpath )
+
         if runOnMC:
+            if writeheader:
+                tempwriter.writerow( ['name', 'datasetpath','gitTag','Analysis','generator', 'xs', 'filtler_effi', 'filter_effi_ref', 'kfactor','energy', 'globalTag', 'CMSSW_Version', 'numEvents'] )
             line = [samplename,
                    datasetpath,\
+                   SampleFileInfoDict['gitTag'],\
+                   options.name,\
                    SampleFileInfoDict['generator'],\
                    mcmutil.getCrossSection(), \
                    mcmutil.getGenInfo('filter_efficiency'),\
@@ -530,7 +540,8 @@ def submitSample2db_dump_csv( samplename, datasetpath, SampleFileInfoDict, optio
                    SampleFileInfoDict['energy'],
                    SampleFileInfoDict['globalTag'],
                    os.getenv( 'CMSSW_VERSION' ),
-                   SampleFileInfoDict['dasInfos']['nevents'] ]
+                   SampleFileInfoDict['dasInfos']['nevents'] ,
+                   ]
         tempwriter.writerow(line)
 
 
