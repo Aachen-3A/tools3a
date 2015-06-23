@@ -16,6 +16,18 @@ runOnMC = True
 runOnData = False
 runOnGen = False
 
+def commandline_parsing():
+    descr = 'Simple Tool for crab job monitoring and submission of metainformation to aix3adb after completion'
+    parser = argparse.ArgumentParser(description= descr)
+    parser.add_argument('-f' '--noFinalize', action='store_true', help='Do not finalize (get metainfo and submit to aix3adb)')
+    parser.add_argument('-r' '--rFailed',    action='store_true', help='resubmit failed tasks')
+    parser.add_argument('-i', '--kIdle',     action='store_true', help='Try to kill stuck idle jobs')
+    parser.add_argument('-u', '--update',    action='store_true', help='Update latest skim instead of creating a new one. This sets the --ignoreComplete option true')
+    parser.add_argument('--ignoreComplete',  action='store_true', help='Do not skip previously finalized samples')
+    args = parser.parse_args()
+
+    if args.update: args.ignoreComplete = True
+    return args
 
 def read_crabconfig( sample ):
     pset = 'crab_%s_cfg.py' % sample
@@ -123,6 +135,11 @@ def finalizeSample(sample,dblink):
             dbSample = dblink.insertMCSample(dbSample)
         else:
             dbSample = dblink.editMCSample(dbSample)
+
+        if args.update:
+            dbSkim, dbSample  =  aix3adb.getMCLatestSkimAndSampleBySample( dbSample.name )
+        else:
+            mcSkim = aix3adb.MCSkim()
         # create a new McSkim object
         mcSkim = aix3adb.MCSkim()
         # create relation to dbsample object
@@ -141,7 +158,10 @@ def finalizeSample(sample,dblink):
         mcSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
         mcSkim.skimmer_globaltag = [p.replace("globalTag=","").strip() for p in config.JobType.pyCfgParams if "globalTag" in p][0]
         mcSkim.nevents = str(totalEvents)
-        dblink.insertMCSkim( mcSkim )
+        if args.update:
+            dblink.editMCSkim( mcSkim )
+        else:
+            dblink.insertMCSkim( mcSkim )
 
 
     elif runOnData:
@@ -167,7 +187,7 @@ def createDBlink():
     return dblink
 
 def main():
-
+    args = commandline_parsing()
     crab = crabFunctions.CrabController()
     #~ crabFolder = crab.crabFolders[0]
     crabSamples = [crabFolder.replace('crab_','') for crabFolder in crab.crabFolders]
@@ -188,22 +208,22 @@ def main():
             i+=1
             #~ state,jobs = crab.status(sample)
             task = crabFunctions.CrabTask(sample)
-            if "COMPLETE" == task.state:
-            #~ print state, sample
+            if "COMPLETE" == task.state and not args.noFinalize:
                 finalizeSample(sample,dblink)
-            if "FAILED" == task.state:# or "KILLED" == task.state:
+            if args.rFailed and "FAILED" == task.state:# or "KILLED" == task.state:
                 cmd = 'crab resubmit --wait %s' %crab._prepareFoldername(sample)
                 p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
                 (out,err) = p.communicate()
                 print out
-            #~ if  "SUBMITTED" == task.state and task.nRunning < 1 and task.nIdle > 0 and task.nTransferring <1:
-                #~ idlejobs = [id for id in task.jobs.keys() if "idle" in task.jobs[id]['State']]
-                #~ idlejobs = ','.join(idlejobs)
-                #~ print "IDLE",idlejobs
-                #cmd = 'crab kill --force --jobids=%s %s' %(idlejobs,crab._prepareFoldername(sample))
+            if  args.kIdle and "SUBMITTED" == task.state and task.nRunning < 1 and task.nIdle > 0 and task.nTransferring <1:
+                idlejobs = [id for id in task.jobs.keys() if "idle" in task.jobs[id]['State']]
+                idlejobs = ','.join(idlejobs)
+                print "IDLE",idlejobs
+                cmd = 'crab kill --force --jobids=%s %s' %(idlejobs,crab._prepareFoldername(sample))
                 #~ cmd = 'crab resubmit --force --jobids=%s %s' %(idlejobs,crab._prepareFoldername(sample))
-                #~ p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
-                #~ (out,err) = p.communicate()
+                #~ cmd = 'crab resubmit --wait %s' %crab._prepareFoldername(sample)
+                p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
+                (out,err) = p.communicate()
                 #~ print out
 
 
