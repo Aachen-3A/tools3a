@@ -92,7 +92,7 @@ def finalizeSample(sample,dblink):
     #~ print "%s/%s/results/*.log.tar.gz" % (config.General.workArea,crabFolder)
     logArchs = glob.glob("%s/%s/results/*.log.tar.gz" % (config.General.workArea,crabFolder))
     #~ print logArchs
-    finalFiles = {}
+    finalFiles = []
     totalEvents = 0
     #~ sys.exit()
     #~ print dCacheFiles
@@ -105,11 +105,9 @@ def finalizeSample(sample,dblink):
         for layer in dCacheFiles:
             dfile += [s for s in layer if "%s_%s.pxlio" %( sample, JobNumber ) in s ]
         if len(dfile)  > 0:
-            finalFiles.update({ dfile[0]:log['readEvents']})
+            finalFiles.append(  {'path':dfile[0], 'nevents':log['readEvents']} )
             totalEvents += log['readEvents']
     newInDB = False
-    #~ print finalFiles
-    #~ sys.exit(1)
     if runOnMC:
         # get infos from McM
         mcmutil = dbutilscms.McMUtilities()
@@ -117,7 +115,6 @@ def finalizeSample(sample,dblink):
         # try to get sample db entry and create it otherwise
         try:
             dbSample = dblink.getMCSample( sample )
-            #~ return 0
         except Aix3adbException:
             dbSample = aix3adb.MCSample()
             newInDB = True
@@ -126,8 +123,8 @@ def finalizeSample(sample,dblink):
         dbSample.generator = generators[ sample.split("_")[-1] ]
         dbSample.crosssection = str(mcmutil.getCrossSection())
         dbSample.crosssection_reference = 'McM'
-        dbSample.filter_efficiency = mcmutil.getGenInfo('filter_efficiency')
-        dbSample.filter_efficiency_reference = 'McM'
+        dbSample.filterefficiency = mcmutil.getGenInfo('filter_efficiency')
+        dbSample.filterefficiency_reference = 'McM'
         dbSample.kfactor = 1.
         dbSample.kfactor_reference = "None"
         dbSample.energy = mcmutil.getEnergy()
@@ -153,7 +150,7 @@ def finalizeSample(sample,dblink):
         mcSkim.files = finalFiles
         mcSkim.created_at = now.strftime( "%Y-%m-%d %H-%M-%S" )
         # where to get the skimmer name ??? MUSiCSkimmer fixed
-        mcSkim.skimmer_name = "MUSiCSkimmer"
+        mcSkim.skimmer_name = "PxlSkimmer"
         mcSkim.skimmer_version = outlfn.split("/")[2]
         mcSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
         mcSkim.skimmer_globaltag = [p.replace("globalTag=","").strip() for p in config.JobType.pyCfgParams if "globalTag" in p][0]
