@@ -37,8 +37,10 @@ def checkTask(item):
 
 def linearStatusgetter(taskList,resubmitList,killList):
     q=[]
+    finished=[]
     for itask,task in enumerate(taskList):
         if task.frontEndStatus=="RETRIEVED":
+            finished.append(task)
             continue
         q.append([task,resubmitList[itask],killList[itask]])
     pool = multiprocessing.Pool(10)
@@ -48,6 +50,8 @@ def linearStatusgetter(taskList,resubmitList,killList):
     while pool._cache:
         time.sleep(1)
     res = result.get()
+    taskList=res+finished
+    return taskList
 
 def resubmitByStatus(taskList, resubmitList, status):
     """add jobs with a certain status to the resubmit list
@@ -79,7 +83,7 @@ def main( options, args):
         taskList.append(task)
         resubmitList.append(set())
         killList.append(set())
-    linearStatusgetter(taskList,resubmitList,killList)
+    taskList=linearStatusgetter(taskList,resubmitList,killList)
 
 
 
@@ -127,24 +131,35 @@ def main( options, args):
             task.resubmitLocal(resubmitList[itask],processes=8)
 
     if options.verbose:
-        taskList, resubmitList, killList = [], [], []
-        # load tasks from directories
-        for directory in args:
-            try:
-                task = cesubmit.Task.load(directory)
-            except:
-                continue
-            taskList.append(task)
-            resubmitList.append(set())
-            killList.append(set())
+        #taskList, resubmitList, killList = [], [], []
+        ## load tasks from directories
+        #for directory in args:
+            #try:
+                #task = cesubmit.Task.load(directory)
+            #except:
+                #continue
+            #taskList.append(task)
+            #resubmitList.append(set())
+            #killList.append(set())
+        taskStati={}
         jobStati={}
         for task in taskList:
             #if task.frontEndStatus!="RETRIEVED":
-            if task.frontEndStatus in jobStati:
-                jobStati[task.frontEndStatus]+=1
+            if task.frontEndStatus in taskStati:
+                taskStati[task.frontEndStatus]+=1
             else:
-                jobStati[task.frontEndStatus]=0
+                taskStati[task.frontEndStatus]=1
+            for job in task.jobs:
+                if job.status in jobStati:
+                    jobStati[job.status]+=1
+                else:
+                    jobStati[job.status]=1
+
         print "Task summery:"
+        for stati in taskStati:
+            print "%s: %d"%(stati,taskStati[stati])
+        print ""
+        print "Job summery:"
         for stati in jobStati:
             print "%s: %d"%(stati,jobStati[stati])
 
