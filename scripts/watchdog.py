@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 import subprocess
 import imp
 import datetime
+import argparse
 
 import crabFunctions
 import gridFunctions
@@ -19,8 +20,8 @@ runOnGen = False
 def commandline_parsing():
     descr = 'Simple Tool for crab job monitoring and submission of metainformation to aix3adb after completion'
     parser = argparse.ArgumentParser(description= descr)
-    parser.add_argument('-f' '--noFinalize', action='store_true', help='Do not finalize (get metainfo and submit to aix3adb)')
-    parser.add_argument('-r' '--rFailed',    action='store_true', help='resubmit failed tasks')
+    parser.add_argument('-f' ,'--noFinalize', action='store_true', help='Do not finalize (get metainfo and submit to aix3adb)')
+    parser.add_argument('-r' ,'--rFailed',    action='store_true', help='resubmit failed tasks')
     parser.add_argument('-i', '--kIdle',     action='store_true', help='Try to kill stuck idle jobs')
     parser.add_argument('-u', '--update',    action='store_true', help='Update latest skim instead of creating a new one. This sets the --ignoreComplete option true')
     parser.add_argument('--ignoreComplete',  action='store_true', help='Do not skip previously finalized samples')
@@ -59,7 +60,7 @@ def readLogArch(logArchName):
             print "Can not parse / read %s" % logArchName
     return log
 
-def finalizeSample(sample,dblink):
+def finalizeSample(sample,dblink, args):
     generators = {}
     generators.update({ 'MG':'madgraph' })
     generators.update({ 'PH':'powheg' })
@@ -104,7 +105,7 @@ def finalizeSample(sample,dblink):
         dfile = []
         for layer in dCacheFiles:
             dfile += [s for s in layer if "%s_%s.pxlio" %( sample, JobNumber ) in s ]
-        if len(dfile)  > 0:
+        if len(dfile)  > 0 and log['readEvents'] > 0 :
             finalFiles.append(  {'path':dfile[0], 'nevents':log['readEvents']} )
             totalEvents += log['readEvents']
     newInDB = False
@@ -118,27 +119,25 @@ def finalizeSample(sample,dblink):
         except Aix3adbException:
             dbSample = aix3adb.MCSample()
             newInDB = True
-        dbSample.datasetpath = config.Data.inputDataset
-        dbSample.name = sample
-        dbSample.generator = generators[ sample.split("_")[-1] ]
-        dbSample.crosssection = str(mcmutil.getCrossSection())
-        dbSample.crosssection_reference = 'McM'
-        dbSample.filterefficiency = mcmutil.getGenInfo('filter_efficiency')
-        dbSample.filterefficiency_reference = 'McM'
-        dbSample.kfactor = 1.
-        dbSample.kfactor_reference = "None"
-        dbSample.energy = mcmutil.getEnergy()
+            dbSample.name = sample
+            dbSample.generator = generators[ sample.split("_")[-1] ]
+            dbSample.crosssection = str(mcmutil.getCrossSection())
+            dbSample.crosssection_reference = 'McM'
+            dbSample.filterefficiency = mcmutil.getGenInfo('filter_efficiency')
+            dbSample.filterefficiency_reference = 'McM'
+            dbSample.kfactor = 1.
+            dbSample.kfactor_reference = "None"
+            dbSample.energy = mcmutil.getEnergy()
+
         if newInDB:
             dbSample = dblink.insertMCSample(dbSample)
         else:
             dbSample = dblink.editMCSample(dbSample)
 
         if args.update:
-            dbSkim, dbSample  =  aix3adb.getMCLatestSkimAndSampleBySample( dbSample.name )
+            mcSkim, mcSample  =  dblink.getMCLatestSkimAndSampleBySample( dbSample.name )
         else:
             mcSkim = aix3adb.MCSkim()
-        # create a new McSkim object
-        mcSkim = aix3adb.MCSkim()
         # create relation to dbsample object
         mcSkim.sampleid = dbSample.id
         mcSkim.datasetpath = config.Data.inputDataset
@@ -199,14 +198,14 @@ def main():
     i = 0
     for sample in crabSamples:
 
-        if not any(sample in s for s in finalsamples):
-            if i % 20 == 0:
+        if not any(sample in s for s in finalsamples) or args.ignoreComplete:
+            if i % 50 == 0:
                 print '{:<90} {:<12} {:<8} {:<8} {:<8} {:<8} {:<8}'.format('Sample','State','Running','Idle','Failed','Transfer','Finished')
             i+=1
             #~ state,jobs = crab.status(sample)
             task = crabFunctions.CrabTask(sample)
             if "COMPLETE" == task.state and not args.noFinalize:
-                finalizeSample(sample,dblink)
+                finalizeSample( sample, dblink, args )
             if args.rFailed and "FAILED" == task.state:# or "KILLED" == task.state:
                 cmd = 'crab resubmit --wait %s' %crab._prepareFoldername(sample)
                 p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
@@ -216,7 +215,7 @@ def main():
                 idlejobs = [id for id in task.jobs.keys() if "idle" in task.jobs[id]['State']]
                 idlejobs = ','.join(idlejobs)
                 print "IDLE",idlejobs
-                cmd = 'crab kill --force --jobids=%s %s' %(idlejobs,crab._prepareFoldername(sample))
+                cmd = 'crab kill --jobids=%s %s' %(idlejobs,crab._prepareFoldername(sample))
                 #~ cmd = 'crab resubmit --force --jobids=%s %s' %(idlejobs,crab._prepareFoldername(sample))
                 #~ cmd = 'crab resubmit --wait %s' %crab._prepareFoldername(sample)
                 p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
