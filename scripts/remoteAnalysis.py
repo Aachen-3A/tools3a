@@ -233,7 +233,7 @@ def expandFiles(gpdir, gpfilestring):
 
 def getJobChunks(files, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, test):
     if test:
-        return [[maxeventsoption, "100", files[0].path]]
+        return [ [maxeventsoption, "100", files[0]['path'] ]]
     if eventsperjob and not filesperjob:
         result = determineJobChunksByEvents(files, eventsperjob)
         return [[maxeventsoption, str(eventsperjob), skipeventsoption, str(skip)]+x for (skip, x) in result]
