@@ -35,6 +35,9 @@ def main():
     groupPrepare.add_option("-d", "--directory", action="store", help="Main television directory", default="./")
     groupPrepare.add_option("--section", action="append", help="Only prepare the following section. May be specified multiple times for multiple sections. If not specified, all sections are prepared.", default=[])
     groupPrepare.add_option("--test", action="store_true", help="Run one task per section with one small job only.", default=False)
+    groupPrepare.add_option("--prepareConfigs", default = 'None',
+                            choices=['None','MUSiC'],
+                            help="Create config Files on the fly for given config style")
     #groupPrepare.add_option("--local", action="store_true", help="Run the tasks on local computer.", default=False)
     #groupPrepare.add_option("--testlocal", action="store_true", help="Run only one task with one small job locally.", default=False)
     groupPrepare.add_option("-s", "--skipcheck", action="store_true", help="Skip check if grid pack is outdated.", default=False)
@@ -317,6 +320,18 @@ def getSkipEventsLocal(cummulativeLow, skipEventsGlobal):
         else:
             return skipEventsLocal
     return skipEventsLocal
+
+## This function may be used to implement dynamic creation of config files during submission
+#
+# Currently only MUSiC configs are implemented
+#@param options A ConfigOptions object holding current script wide options
+#@param args A list of additional command line arguments
+#@param A list of skims and samples as created by readConfig
+def prepareConfigs( skimlist, options ):
+    if options.prepareConfigs == "MUSiC":
+        from aix3adb2music import getConfigDicts,writeConfigDicts,flattenRemoteSkimDict
+        scalesdict, playlistdict = getConfigDicts( flattenRemoteSkimDict( skimlist ) )
+        writeConfigDicts( scalesdict, playlistdict , lumi=options.lumi )
 
 ## Yield successive n-sized chunks from l. The last chunk may be smaller than n.
 #
