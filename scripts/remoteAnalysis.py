@@ -5,12 +5,14 @@ logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 import cesubmit
 import os
+import sys
 import time
 import glob
 import subprocess
 import ConfigParser
 import optparse
 import aix3adb
+from  aix3adb import Aix3adbException
 import math
 import shlex
 import tarfile
@@ -44,57 +46,90 @@ def main():
     elif options.prepare:
         prepare(options, args)
 
-def prepare(options, args):
+def readConfig(options,args):
+
+    dblink = aix3adb.aix3adb()
     config = MyConfigParser()
     config.read(args[0])
-    dblink = aix3adb.aix3adb()
-    executable = config.get("DEFAULT","executable")
-    outputfiles = shlex.split(config.get("DEFAULT","outputfiles"))
-    gridoutputfiles = shlex.split(config.get("DEFAULT","gridoutputfiles"))
-    localgridpackdirectory = config.get("DEFAULT","localgridpackdirectory")
-    gridpackfiles = config.get("DEFAULT","gridpackfiles")
-    localgridtarfile = config.get("DEFAULT","localgridtarfile")
-    remotegridtarfile = config.get("DEFAULT","remotegridtarfile")
-    cmssw = config.get("DEFAULT","cmssw")
-    maxeventsoption = config.get("DEFAULT","maxeventsoption")
-    skipeventsoption = config.get("DEFAULT","skipeventsoption")
-    eventsperjob = config.getint("DEFAULT","eventsperjob")
-    filesperjob = config.getint("DEFAULT","filesperjob")
-    datasections = config.get("DEFAULT","datasections")
-    basedir = options.directory
-    if not options.skipcheck:
-        checkGridpack(localgridtarfile, remotegridtarfile, localgridpackdirectory, gridpackfiles)
-    dblink = aix3adb.aix3adb()
+
+    optionNames = ['executable',
+                   'outputfiles',
+                   'inputfiles',
+                   "gridoutputfiles",
+                   "localgridpackdirectory",
+                   "gridpackfiles",
+                   "localgridtarfile",
+                   "remotegridtarfile",
+                   "cmssw",
+                   "maxeventsoption",
+                   "skipeventsoption",
+                   "eventsperjob",
+                   "filesperjob",
+                   "datasections"]
+
+    # Add options which are only present in certain cases
+    if not options.prepareConfigs == "None":
+        optionNames.append( 'configdir' )
+    for option in optionNames:
+        setattr( options, option, config.get("DEFAULT",option) )
+    try:
+        options.lumi = int( config.get('DEFAULT', 'lumi') )
+    except:pass
+    sectionlist = {}
     for section in config.sections():
         if section in ["DEFAULT"]: continue
-        if options.sections != [] and section not in options.section: continue
-        mc = not (section in datasections)
-        print "Preparing tasks for section {0}.".format(section)
+        if section != [] and section not in section: continue
+        mc = not (section in options.datasections)
         identifiers=config.optionsNoDefault(section)
-        print "Found {0} tasks.".format(len(identifiers))
+        sectionlist.update( {section:[]} )
         for identifier in identifiers:
             arguments = shlex.split(config.get(section, identifier))
-            if identifier[0]=="/":
-                #it's a datasetpath
-                if mc:
-                    skim, sample = dblink.getMCLatestSkimAndSampleByDatasetpath(identifier)
+            try:
+                if identifier[0]=="/":
+                    #it's a datasetpath
+                    if mc:
+                        skim, sample = dblink.getMCLatestSkimAndSampleByDatasetpath(identifier)
+                    else:
+                        skim, sample = dblink.getDataLatestSkimAndSampleByDatasetpath(identifier)
+                elif identifier.isdigit():
+                    #it's a skim id
+                    if mc:
+                        skim, sample = dblink.getMCSkimAndSampleBySkim(identifier)
+                    else:
+                        skim, sample = dblink.getDataSkimAndSampleBySkim(identifier)
                 else:
-                    skim, sample = dblink.getDataLatestSkimAndSampleByDatasetpath(identifier)
-            elif identifier.isdigit():
-                #it's a skim id
-                if mc:
-                    skim, sample = dblink.getMCSkimAndSampleBySkim(identifier)
-                else:
-                    skim, sample = dblink.getDataSkimAndSampleBySkim(identifier)
-            else:
-                #it's a sample name
-                if mc:
-                    skim, sample = dblink.getMCLatestSkimAndSampleBySample(identifier)
-                else:
-                    skim, sample = dblink.getDataLatestSkimAndSampleBySample(identifier)
-            makeTask(skim, sample, basedir, section, executable, arguments, cmssw, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, outputfiles, gridoutputfiles, remotegridtarfile, test=options.test)
-            if options.test:
-                break
+                    #it's a sample name
+                    if mc:
+                        skim, sample = dblink.getMCLatestSkimAndSampleBySample(identifier)
+                    else:
+                        skim, sample = dblink.getDataLatestSkimAndSampleBySample(identifier)
+            except Aix3adbException:
+                print "Can not find sample and skim for identifier %s" % str(identifier)
+                sys.exit(1)
+            sectionlist[ section ].append( ( skim, sample, arguments) )
+    return sectionlist
+
+def prepare(options, args):
+
+    skimlist = readConfig( options, args )
+    if not options.skipcheck:
+        checkGridpack( options.localgridtarfile,
+                       options.remotegridtarfile,
+                       options.localgridpackdirectory,
+                       options.gridpackfiles)
+    dblink = aix3adb.aix3adb()
+
+    if not options.prepareConfigs == "None":
+        prepareConfigs( skimlist, options  )
+
+    #~ for ( skim, sample, arguments ) in skimlist:
+    for section in skimlist.keys():
+        print "Preparing tasks for section {0}.".format(section)
+        print "Found {0} tasks.".format(len( skimlist[ section ] ))
+        for ( skim, sample, arguments ) in skimlist[ section ]:
+            makeTask( options, skim, sample, section, arguments )
+        if options.test:
+            break
 
 def merge(options, args):
     print "Merging..."
@@ -108,17 +143,28 @@ def merge(options, args):
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
             (stdout, stderr) = p.communicate()
 
-def makeTask(skim, sample, basedir, section, executable, arguments, cmssw, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, outputfiles, gridoutputfiles, remotegridtarfile, test):
+def makeTask(options, skim, sample, section, arguments):
+    basedir = options.directory
     name = sample.name+"-skimid"+str(skim.id)
     print "Preparing task", name
-    task=cesubmit.Task(name, directory=os.path.join(basedir,section,name), cmsswVersion=cmssw, mode="CREATE")
-    task.executable=executable
+    if options.cmssw:
+        cmssw = options.cmssw
+    else:
+        cmssw = True
+    task=cesubmit.Task(name, directory=os.path.join(basedir,section,name), cmsswVersion= cmssw, mode="CREATE")
+    task.executable=options.executable
     task.uploadexecutable=False
-    task.outputfiles.extend(outputfiles)
-    task.addGridPack(remotegridtarfile)
-    for gridoutputfile in gridoutputfiles:
-        task.copyResultsToDCache(gridoutputfile)
-    jobchunks=getJobChunks(skim.files, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, test)
+    task.outputfiles.extend( shlex.split( options.outputfiles ) )
+    task.inputfiles.extend( expandFiles("", options.inputfiles ) )
+    task.addGridPack( options.remotegridtarfile )
+    for gridoutputfile in options.gridoutputfiles:
+        task.copyResultsToDCache( options.gridoutputfile )
+    jobchunks=getJobChunks( skim.files,
+                            options.eventsperjob,
+                            options.filesperjob,
+                            options.maxeventsoption,
+                            options.skipeventsoption,
+                            options.test)
     print "Number of jobs: ", len(jobchunks)
     for chunk in jobchunks:
         job=cesubmit.Job()
