@@ -134,7 +134,7 @@ def finalizeSample(sample,dblink, args):
         else:
             dbSample = dblink.editMCSample(dbSample)
 
-        if args.update:
+        if args.update and not newInDB:
             mcSkim, mcSample  =  dblink.getMCLatestSkimAndSampleBySample( dbSample.name )
         else:
             mcSkim = aix3adb.MCSkim()
