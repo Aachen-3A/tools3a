@@ -9,16 +9,18 @@
 
 #  How to get everything running:
 
-- Start by installing LHAPDF6.0.5 with the 'install.sh' script
-	+ it will also download all standard PDFsets (modify if neccessary)
-	+ if LHAPDF and PDFsets already exist, modify 'Makefile' and 'pdf.cfg' to use it
-- Set the library paths:
-	+ 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/local/lib/'
-	+ 'export LHAPDF_BASE=$PWD/local/'
+-no need to instll LHAPDF!!
+--------------old--------------
+#        - Start by installing LHAPDF6.0.5 with the 'install.sh' script
+#                + it will also download all standard PDFsets (modify if neccessary)
+#                + if LHAPDF and PDFsets already exist, modify 'Makefile' and 'pdf.cfg' to use it
+#        - Set the library paths:
+#                + 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/local/lib/'
+#                + 'export LHAPDF_BASE=$PWD/local/'
+--------------old--------------
+- source set_env.sh
 - Compile 'hist_maker.cpp' with the Makefile
 	+ 'make'
-- Set the library path:
-	+ 'export LD_LIBRARY_PATH=$PWD:$LD_LIBRARY_PATH'
 - Modify the *.cfg files for your needs:
 	+ 'pdf.cfg':
 		* Set the path information for the PDF sets
@@ -40,9 +42,9 @@
 		* Same as 'Bag.cfg' just for your signal samples
 	+ 'xs.cfg'
 		* Cross section information for each MC sample
-		
+
 # Now everything is set up and you can start your PDF calculations
-		
+
 - Run the PDF calculation:
 	+ './RATA_PDF.py'
 		* chose option '-s' for signal samples

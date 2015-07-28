@@ -8,15 +8,17 @@
 PROGRAM       = hist_maker
 
 
- #CMSSW_RELEASE_BASE_NOPATCH:=$(shell echo $(CMSSW_RELEASE_BASE) | sed -e 's/-patch//' -e 's/_patch.//')
- CMSSW_INC:=-I$(LHAPDF_PATH)/include -I$(BOOST_PATH)/1.51.0/include
- CMSSW_LIBS:=-L$(LHAPDF_PATH)/lib -L$(BOOST_PATH)/1.51.0/lib
-
 LHAPDF_PATH =$(LHAPDF_BASE)
-BOOST_PATH=/cvmfs/cms.cern.ch/slc5_amd64_gcc462/external/boost/
- 
-EXTLIBS     = $(CMSSW_LIBS) -L$(LHAPDF_PATH)/lib -L$(BOOST_PATH)/1.51.0/lib
-EXTINCDIR   = $(CMSSW_INC) -I$(LHAPDF_PATH)/include -I$(BOOST_PATH)/1.51.0/include
+BOOST_PATH=/cvmfs/cms.cern.ch/slc6_amd64_gcc491/external/boost/1.57.0-jlbgio/
+
+#CMSSW_RELEASE_BASE_NOPATCH:=$(shell echo $(CMSSW_RELEASE_BASE) | sed -e 's/-patch//' -e 's/_patch.//')
+CMSSW_INC:=-I$(LHAPDF_PATH)/include -I$(BOOST_PATH)/include
+CMSSW_LIBS:=-L$(LHAPDF_PATH)/lib -L$(BOOST_PATH)/lib
+
+
+
+EXTLIBS     = $(CMSSW_LIBS) -L$(LHAPDF_PATH)/lib -L$(BOOST_PATH)/lib
+EXTINCDIR   = $(CMSSW_INC) -I$(LHAPDF_PATH)/include -I$(BOOST_PATH)/include
 
 # external includes / libraries
 #CLHEP_VERSION = 2.0.2.1
@@ -33,7 +35,7 @@ ROOTCFLAGS   := $(shell root-config --cflags)
 ROOTLIBS     := $(shell root-config --libs)
 ROOTGLIBS    := $(shell root-config --glibs)
 # ROOTGLIBS   += -lX3d -L/net/data_cms/institut_3a/SusyWG/LHAPDF/lib
-ROOTGLIBS   += -lX3d -L$(LHAPDF_PATH)/lib -L$(BOOST_PATH)/1.51.0/lib
+ROOTGLIBS   += -lX3d -L$(LHAPDF_PATH)/lib -L$(BOOST_PATH)/lib
 
 
 # Linux with gcc / g++ / g77
@@ -45,7 +47,7 @@ FCFLAGS       = -I/cern/pro/include -fPIC -fno-automatic -fdollar-ok -fno-backsl
 # top_builddir = /home/home1/institut_3a/erdweg/Desktop/Software/pdf_uncertainties/lhapdf-5.8.8/
 
 CXX           = g++
-CXXFLAGS      = -O2 -Wall -fPIC -fsignaling-nans -g # -DNDEBUG#  -pg for gprof
+CXXFLAGS      = -O2 -fPIC -fsignaling-nans -g # -DNDEBUG#  -pg for gprof
 CXXFLAGS     += $(EXTINCDIR)   # external header files should be here
 CXXFLAGS     += $(ROOTCFLAGS)
 
@@ -119,8 +121,7 @@ include $(DEPENDS)
 ######################################################################
 # targets
 #$(DICT).o
-$(PROGRAM):  $(OBJECTS) 
+$(PROGRAM):  $(OBJECTS)
 	$(LD) -shared $(LDFLAGS) $+ -o $@
-	$(LD) -shared $(LDFLAGS) $+ -Wl,-soname,lib/library.so  -o lib/library.so $@
-		@mv $(PROGRAM) lib/
+	$(LD) -shared $(LDFLAGS) $+  -o library.so $@
 		@echo "$@ done"
