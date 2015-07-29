@@ -742,13 +742,13 @@ def commandline_parsing( parsingController ):
     # were already present in muic_crab
     ####################################
     skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer' )
-    lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/lumi' )
+    lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/lumi/' )
     config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/configs' )
     parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
     parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
-    parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/configs]' )
-    parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/lumi]' )
-    parser.add_option( '--ana-dir', metavar='DIR', default=skimmer_dir, help='Directory containing the analysis [default: $CMSSW_BASE/src/PxlSkimmer/]' )
+    parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default:%default]' )
+    parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default:%default]' )
+    parser.add_option( '--ana-dir', metavar='DIR', default=skimmer_dir, help='Directory containing the analysis [default:%default]' )
     parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
                        help='Only submit samples matching PATTERNS (bash-like ' \
                             'patterns only, comma separated values. ' \
@@ -800,24 +800,25 @@ def commandline_parsing( parsingController ):
                                                 ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
     parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ')
     parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
-    parser.add_option('--maxJobRuntimeMin',help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72]" )
+    parser.add_option('--maxJobRuntimeMin',help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72] (set by crab)" )
     parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" )
     parser.add_option('--priority', help='Task priority among the user\'s own tasks. Higher priority tasks will be processed before lower priority.'\
                                                     ' Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a'\
                                                     ' task are given a priority boost of 10. [default  10] ' )
     parser.add_option('-n','--name', default="PxlSkim" ,
                       help="Name for this analysis run (E.g. Skim Campaign Name) [default: %default]")
-    parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: False]")
+    parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: %default]")
     ####################################
     # new options for Data in pset
     ####################################
-    parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: 10.000]")
+    parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: %default]")
+    parser.add_option('--unitsPerJob',default="20",help="Suggests (but not impose) how many units (i.e. files, luminosity sections or events [1] -depending on the splitting mode-) to include in each job.  [default: %default]")
     parser.add_option('--ignoreLocality',action='store_true',default=False,help="Set to True to allow jobs to run at any site,"
                                                         "regardless of whether the dataset is located at that site or not. "\
                                                         "Remote file access is done using Xrootd. The parameters Site.whitelist"\
                                                         " and Site.blacklist are still respected. This parameter is useful to allow "\
                                                         "jobs to run on other sites when for example a dataset is available on only one"\
-                                                        " or a few sites which are very busy with jobs. Defaults to False. ")
+                                                        " or a few sites which are very busy with jobs. Defaults to %default. ")
 
     # we need to add the parser options from other modules
     #get crab command line options
