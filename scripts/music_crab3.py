@@ -121,18 +121,21 @@ def main():
                 except HTTPException:
                     # Try resubmit once
                     controller.submit( configFileName )
-                submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
+                if runOnMC:
+                    submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
                 tasks_submitted.append( ( key, time.time() ) )
             # Delete folder and submit if --force option is used
             elif options.force:
                 shutil.rmtree( "crab_" + key )
                 controller.submit( configFileName )
-                submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
+                if runOnMC:
+                    submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
                 tasks_submitted.append( ( key, time.time() ) )
             else:
                 log.warning('Existing CRAB folder for tasks: %s not '\
                             'found (use force to submit anyway)' % key)
-                submitSample2db_dump_csv( key,"fail", SampleDict[ key ][1], SampleFileInfoDict, options )
+                if runOnMC:
+                    submitSample2db_dump_csv( key,"fail", SampleDict[ key ][1], SampleFileInfoDict, options )
                 tasks_existing.append( ( key, 'EXISTING' ) )
         if options.resubmit:
             controller.resubmit( configFileName )
@@ -261,7 +264,7 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'Data', 'splitting', 'LumiBased' )
         config.set( 'Data', 'unitsPerJob', lumisPerJob )
         if ".json" in lumi_mask:
-            config.set( 'Data', 'lumiMask', lumi_dir + lumi_mask )
+            config.set( 'Data', 'lumiMask', os.path.join(options.lumi_dir , lumi_mask) )
         else:
             config.set( 'Data', 'lumiMask', SampleFileInfoDict['DCSOnly_json'] )
             config.set( 'Data', 'runRange', lumi_mask )
@@ -337,11 +340,12 @@ def writeCrabConfig(name,config,options):
     else:
         runPath ="./"
     filename = '%s/crab_%s_cfg.py'%(runPath,name)
-    try:
-        config.writeCrabConfig(filename)
-        log.info( 'created crab config file %s'%filename )
-    except:
-        log.error("Could not create crab config file")
+    #try:
+    config.writeCrabConfig(filename)
+    log.info( 'created crab config file %s'%filename )
+    #except  Exception as e:
+        #log.error("Could not create crab config file %s"%e)
+        #sys.exit()
 
     return filename
 
@@ -379,7 +383,6 @@ def readSampleFile(filename,options):
             if line.startswith( 'maxJobRuntimeMin' ):
                 generator = line.split( '=' )[1].strip()
                 outdict.update({'maxJobRuntimeMin':options.maxJobRuntimeMin})
-                runOnMC = True
             if line.startswith( 'CME' ):
                 energy = line.split( '=' )[1].strip()
                 outdict.update({'energy':energy})
@@ -388,10 +391,12 @@ def readSampleFile(filename,options):
                 outdict.update({'DCSOnly_json':DCSOnly_json})
                 # set a default
                 outdict.update({'defaultUnitsPerJob':"20"})
-                runOnData = True
             if line.startswith( 'defaultUnitsPerJob' ):
                 defaultLumisPerJob= line.split( '=' )[1].strip()
                 outdict.update({'defaultLumisPerJob':defaultLumisPerJob})
+            if line.startswith( 'isData' ):
+                runOnData = bool(line.split( '=' )[1].strip())
+                runOnMC = not (runOnData)
             if line.startswith( 'config' ):
                 (junk,pset) = line.split( '=' )
                 pset = os.path.join( options.config_dir, pset.strip() )
@@ -415,14 +420,11 @@ def readSampleFile(filename,options):
                 if ';' in line:
                     split_line = line.split( ';' )
                     first_part = split_line[ 0 ]
-                    if ".json" in split_line[1]:
-                        lumi_mask = os.path.join( options.lumi_dir, split_line[ 1 ] )
-                    else:
-                        lumi_mask = split_line[1].strip()
+                    lumi_mask = split_line[ 1 ].strip()
                     if len( split_line ) > 2:
                         lumisPerJob = int( split_line[ 2 ] )
                     else:
-                        lumisPerJob = lumisPerJob
+                        lumisPerJob = options.unitsPerJob
                 else:
                     first_part = line
                     lumi_mask = None
