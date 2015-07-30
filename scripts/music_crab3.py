@@ -233,8 +233,8 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'JobType', 'outputFiles', options.outputFiles )
     else:
         config.set( 'JobType', 'outputFiles', [name+".pxlio"]  )
-    if options.allowNonProductionCMSSW:
-        config.set( 'JobType', 'allowNonProductionCMSSW', 'True' )
+    if options.allowUndistributedCMSSW:
+        config.set( 'JobType', 'allowUndistributedCMSSW', 'True' )
     if options.maxmemory:
         try:
             config.set( 'JobType', 'maxmemory', "%d"%int(options.maxmemory ) )
@@ -800,7 +800,8 @@ def commandline_parsing( parsingController ):
     parser.add_option('--inputFiles',help='List of private input files needed by the jobs. ')
     parser.add_option('--outputFiles',help='List of output files that need to be collected, besides those already specified in the output'\
                                                 ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
-    parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ')
+    parser.add_option( '--allowUndistributedCMSSW', action='store_true', default=False,
+                       help='Allow using a CMSSW release potentially not available at sites. [default: %default]' )
     parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
     parser.add_option('--maxJobRuntimeMin',help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72] (set by crab)" )
     parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" )
