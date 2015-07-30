@@ -681,7 +681,7 @@ def createTag( options ):
             if output:
                 error  = "Repository in '%s' has uncommitted changes.\n" % skimmer_dir
                 error += "It is strongly recommended that you commit your changes and rerun this script.\n"
-                error += "If you know what you are doing, you can use the '--no-tag' option to submit anyway!"
+                error += "If you know what you are doing, you can use the '--noTag' option to submit anyway!"
                 log.error( error )
                 return False
             return True
