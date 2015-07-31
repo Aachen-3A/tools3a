@@ -304,6 +304,9 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     config.add_section('Site')
     config.set( 'Site', 'storageSite', 'T2_DE_RWTH' )
 
+    if options.whitelist:
+        whitelists = options.whitelist.split(',')
+        config.set( 'Site', 'whitelist', whitelists )
 
     if options.blacklist:
         blacklists = options.blacklist.split(',')
@@ -766,6 +769,7 @@ def commandline_parsing( parsingController ):
                        help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
     #~ parser.add_option( '--noTag', action='store_true', default=False,
     parser.add_option( '--noTag', action='store_true', default=False,help="Do not create a tag in the skimmer repository. [default: %default]" )
+    parser.add_option( '-w', '--whitelist', metavar='SITES', help="Whitelist SITES in a comma separated list, e.g. 'T2_DE_RWTH,T2_US_Purdue'." )
     parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1 separated by comma, e.g. T2_DE_RWTH,T2_US_Purdue  ' )
     parser.add_option( '-D', '--db', action='store_true', default=False,
                        help="Register all datasets at the database: 'https://cern.ch/aix3adb/'. [default: %default]" )
@@ -829,8 +833,10 @@ def commandline_parsing( parsingController ):
                                                         "regardless of whether the dataset is located at that site or not. "\
                                                         "Remote file access is done using Xrootd. The parameters Site.whitelist"\
                                                         " and Site.blacklist are still respected. This parameter is useful to allow "\
-                                                        "jobs to run on other sites when for example a dataset is available on only one"\
-                                                        " or a few sites which are very busy with jobs. Defaults to %default. ")
+                                                        "jobs to run on other sites when for example a dataset is available on only one "\
+                                                        "or a few sites which are very busy with jobs. It is strongly recommended "\
+                                                        "to provide a whitelist of sites physically close to the input dataset's host "\
+                                                        "site. This helps reduce file access latency. [default: %default]" )
 
     # we need to add the parser options from other modules
     #get crab command line options
