@@ -749,14 +749,21 @@ def commandline_parsing( parsingController ):
     # The following options
     # were already present in muic_crab
     ####################################
-    skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer' )
-    lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/lumi/' )
-    config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/configs' )
+    skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming' )
+    lumi_dir    = os.path.join( skimmer_dir, 'test/lumi' )
+    config_dir  = os.path.join( skimmer_dir, 'test/configs' )
     parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
     parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
-    parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default:%default]' )
-    parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default:%default]' )
-    parser.add_option( '--ana-dir', metavar='DIR', default=skimmer_dir, help='Directory containing the analysis [default:%default]' )
+    parser.add_option( '--ana-dir', metavar='ANADIR', default=skimmer_dir,
+                       help='Directory containing the analysis. If set, ANADIR is used '\
+                            'as the base directory for CONFDIR and LUMIDIR. [default: '\
+                            '%default]' )
+    parser.add_option( '--config-dir', metavar='CONFDIR', default=config_dir,
+                       help='Directory containing CMSSW configs. Overwrites input from '\
+                            'ANADIR. [default: %default]' )
+    parser.add_option( '--lumi-dir', metavar='LUMIDIR', default=lumi_dir,
+                       help='Directory containing luminosity-masks. Overwrites input '\
+                            'from ANADIR. [default: %default]' )
     parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
                        help='Only submit samples matching PATTERNS (bash-like ' \
                             'patterns only, comma separated values. ' \
@@ -854,6 +861,17 @@ def commandline_parsing( parsingController ):
     #get current user HNname
     if not options.user:
         options.user = parsingController.checkusername()
+
+    # Set CONFDIR and LUMIDIR relative to ANADIR if ANADIR is set
+    # but the other two are not.
+    if not options.ana_dir == skimmer_dir:
+        # ANADIR was set (it is not at its default value).
+        if options.lumi_dir == lumi_dir:
+            # LUMIDIR was not set (it is at its default value).
+            options.lumi_dir = os.path.join( options.ana_dir, 'test/lumi' )
+        if options.config_dir == config_dir:
+            # CONFDIR was not set (it is at its default value).
+            options.config_dir = os.path.join( options.ana_dir, 'test/configs' )
 
     return (options, args )
 
