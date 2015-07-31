@@ -284,8 +284,11 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'Data', 'splitting', 'FileBased' )
         config.set( 'Data', 'unitsPerJob', '%d'%filesPerJob)
 
-    outdir = "/store/user/%s/%s/%s/%s/"%(options.user, options.name,  SampleFileInfoDict['gitTag'] ,name)
-    config.set( 'Data', 'outLFNDirBase', outdir.replace("//", "/" ) )
+    if options.outLFNDirBase:
+        outdir = os.path.join( '/store/user/', options.user, options.outLFNDirBase )
+    else:
+        outdir = os.path.join( '/store/user/', options.user, options.name, SampleFileInfoDict['gitTag'], name )
+    config.set( 'Data', 'outLFNDirBase', outdir )
 
     ## set default for now, will change later
     config.set( 'Data', 'publishDataName', SampleFileInfoDict['globalTag'] )
@@ -771,7 +774,7 @@ def commandline_parsing( parsingController ):
     #//////////////////////////////
 
     # new feature alternative username
-    parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
+    parser.add_option( '-u', '--user', metavar='USERNAME', help='Alternative username [default: HN-username]' )
     parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
     parser.add_option( '--resubmit',action='store_true', default=False, help='Try to resubmit jobs instead of submit')
     parser.add_option( '--force',action='store_true', default=False, help='Delete existing crab folder and resubmit tasks')
@@ -815,6 +818,12 @@ def commandline_parsing( parsingController ):
     # new options for Data in pset
     ####################################
     parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: %default]")
+    ####################################
+    # new options for Site in pset
+    ####################################
+    parser.add_option( '--outLFNDirBase', metavar='OUTLFNDIRBASE', default=None,
+                       help="Set dCache directory for crab output to '/store/user/USERNAME/"\
+                            "OUTLFNDIRBASE'. [default: 'store/user/USERNAME/PxlSkim/git-tag/']" )
     parser.add_option('--unitsPerJob',default="20",help="Suggests (but not impose) how many units (i.e. files, luminosity sections or events [1] -depending on the splitting mode-) to include in each job.  [default: %default]")
     parser.add_option('--ignoreLocality',action='store_true',default=False,help="Set to True to allow jobs to run at any site,"
                                                         "regardless of whether the dataset is located at that site or not. "\
