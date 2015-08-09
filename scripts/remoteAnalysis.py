@@ -5,12 +5,14 @@ logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 import cesubmit
 import os
+import sys
 import time
 import glob
 import subprocess
 import ConfigParser
 import optparse
 import aix3adb
+from  aix3adb import Aix3adbException
 import math
 import shlex
 import tarfile
@@ -33,6 +35,9 @@ def main():
     groupPrepare.add_option("-d", "--directory", action="store", help="Main television directory", default="./")
     groupPrepare.add_option("--section", action="append", help="Only prepare the following section. May be specified multiple times for multiple sections. If not specified, all sections are prepared.", default=[])
     groupPrepare.add_option("--test", action="store_true", help="Run one task per section with one small job only.", default=False)
+    groupPrepare.add_option("--prepareConfigs", default = 'None',
+                            choices=['None','MUSiC'],
+                            help="Create config Files on the fly for given config style")
     #groupPrepare.add_option("--local", action="store_true", help="Run the tasks on local computer.", default=False)
     #groupPrepare.add_option("--testlocal", action="store_true", help="Run only one task with one small job locally.", default=False)
     groupPrepare.add_option("-s", "--skipcheck", action="store_true", help="Skip check if grid pack is outdated.", default=False)
@@ -44,57 +49,90 @@ def main():
     elif options.prepare:
         prepare(options, args)
 
-def prepare(options, args):
+def readConfig(options,args):
+
+    dblink = aix3adb.aix3adb()
     config = MyConfigParser()
     config.read(args[0])
-    dblink = aix3adb.aix3adb()
-    executable = config.get("DEFAULT","executable")
-    outputfiles = shlex.split(config.get("DEFAULT","outputfiles"))
-    gridoutputfiles = shlex.split(config.get("DEFAULT","gridoutputfiles"))
-    localgridpackdirectory = config.get("DEFAULT","localgridpackdirectory")
-    gridpackfiles = config.get("DEFAULT","gridpackfiles")
-    localgridtarfile = config.get("DEFAULT","localgridtarfile")
-    remotegridtarfile = config.get("DEFAULT","remotegridtarfile")
-    cmssw = config.get("DEFAULT","cmssw")
-    maxeventsoption = config.get("DEFAULT","maxeventsoption")
-    skipeventsoption = config.get("DEFAULT","skipeventsoption")
-    eventsperjob = config.getint("DEFAULT","eventsperjob")
-    filesperjob = config.getint("DEFAULT","filesperjob")
-    datasections = config.get("DEFAULT","datasections")
-    basedir = options.directory
-    if not options.skipcheck:
-        checkGridpack(localgridtarfile, remotegridtarfile, localgridpackdirectory, gridpackfiles)
-    dblink = aix3adb.aix3adb()
+
+    optionNames = ['executable',
+                   'outputfiles',
+                   'inputfiles',
+                   "gridoutputfiles",
+                   "localgridpackdirectory",
+                   "gridpackfiles",
+                   "localgridtarfile",
+                   "remotegridtarfile",
+                   "cmssw",
+                   "maxeventsoption",
+                   "skipeventsoption",
+                   "eventsperjob",
+                   "filesperjob",
+                   "datasections"]
+
+    # Add options which are only present in certain cases
+    if not options.prepareConfigs == "None":
+        optionNames.append( 'configdir' )
+    for option in optionNames:
+        setattr( options, option, config.get("DEFAULT",option) )
+    try:
+        options.lumi = int( config.get('DEFAULT', 'lumi') )
+    except:pass
+    sectionlist = {}
     for section in config.sections():
         if section in ["DEFAULT"]: continue
-        if options.sections != [] and section not in options.section: continue
-        mc = not (section in datasections)
-        print "Preparing tasks for section {0}.".format(section)
+        if section != [] and section not in section: continue
+        mc = not (section in options.datasections)
         identifiers=config.optionsNoDefault(section)
-        print "Found {0} tasks.".format(len(identifiers))
+        sectionlist.update( {section:[]} )
         for identifier in identifiers:
             arguments = shlex.split(config.get(section, identifier))
-            if identifier[0]=="/":
-                #it's a datasetpath
-                if mc:
-                    skim, sample = dblink.getMCLatestSkimAndSampleByDatasetpath(identifier)
+            try:
+                if identifier[0]=="/":
+                    #it's a datasetpath
+                    if mc:
+                        skim, sample = dblink.getMCLatestSkimAndSampleByDatasetpath(identifier)
+                    else:
+                        skim, sample = dblink.getDataLatestSkimAndSampleByDatasetpath(identifier)
+                elif identifier.isdigit():
+                    #it's a skim id
+                    if mc:
+                        skim, sample = dblink.getMCSkimAndSampleBySkim(identifier)
+                    else:
+                        skim, sample = dblink.getDataSkimAndSampleBySkim(identifier)
                 else:
-                    skim, sample = dblink.getDataLatestSkimAndSampleByDatasetpath(identifier)
-            elif identifier.isdigit():
-                #it's a skim id
-                if mc:
-                    skim, sample = dblink.getMCSkimAndSampleBySkim(identifier)
-                else:
-                    skim, sample = dblink.getDataSkimAndSampleBySkim(identifier)
-            else:
-                #it's a sample name
-                if mc:
-                    skim, sample = dblink.getMCLatestSkimAndSampleBySample(identifier)
-                else:
-                    skim, sample = dblink.getDataLatestSkimAndSampleBySample(identifier)
-            makeTask(skim, sample, basedir, section, executable, arguments, cmssw, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, outputfiles, gridoutputfiles, remotegridtarfile, test=options.test)
-            if options.test:
-                break
+                    #it's a sample name
+                    if mc:
+                        skim, sample = dblink.getMCLatestSkimAndSampleBySample(identifier)
+                    else:
+                        skim, sample = dblink.getDataLatestSkimAndSampleBySample(identifier)
+            except Aix3adbException:
+                print "Can not find sample and skim for identifier %s" % str(identifier)
+                sys.exit(1)
+            sectionlist[ section ].append( ( skim, sample, arguments) )
+    return sectionlist
+
+def prepare(options, args):
+
+    skimlist = readConfig( options, args )
+    if not options.skipcheck:
+        checkGridpack( options.localgridtarfile,
+                       options.remotegridtarfile,
+                       options.localgridpackdirectory,
+                       options.gridpackfiles)
+    dblink = aix3adb.aix3adb()
+
+    if not options.prepareConfigs == "None":
+        prepareConfigs( skimlist, options  )
+
+    #~ for ( skim, sample, arguments ) in skimlist:
+    for section in skimlist.keys():
+        print "Preparing tasks for section {0}.".format(section)
+        print "Found {0} tasks.".format(len( skimlist[ section ] ))
+        for ( skim, sample, arguments ) in skimlist[ section ]:
+            makeTask( options, skim, sample, section, arguments )
+        if options.test:
+            break
 
 def merge(options, args):
     print "Merging..."
@@ -108,17 +146,28 @@ def merge(options, args):
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
             (stdout, stderr) = p.communicate()
 
-def makeTask(skim, sample, basedir, section, executable, arguments, cmssw, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, outputfiles, gridoutputfiles, remotegridtarfile, test):
+def makeTask(options, skim, sample, section, arguments):
+    basedir = options.directory
     name = sample.name+"-skimid"+str(skim.id)
     print "Preparing task", name
-    task=cesubmit.Task(name, directory=os.path.join(basedir,section,name), cmsswVersion=cmssw, mode="CREATE")
-    task.executable=executable
+    if options.cmssw:
+        cmssw = options.cmssw
+    else:
+        cmssw = True
+    task=cesubmit.Task(name, directory=os.path.join(basedir,section,name), cmsswVersion= cmssw, mode="CREATE")
+    task.executable=options.executable
     task.uploadexecutable=False
-    task.outputfiles.extend(outputfiles)
-    task.addGridPack(remotegridtarfile)
-    for gridoutputfile in gridoutputfiles:
-        task.copyResultsToDCache(gridoutputfile)
-    jobchunks=getJobChunks(skim.files, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, test)
+    task.outputfiles.extend( shlex.split( options.outputfiles ) )
+    task.inputfiles.extend( expandFiles("", options.inputfiles ) )
+    task.addGridPack( options.remotegridtarfile )
+    for gridoutputfile in options.gridoutputfiles:
+        task.copyResultsToDCache( options.gridoutputfile )
+    jobchunks=getJobChunks( skim.files,
+                            options.eventsperjob,
+                            options.filesperjob,
+                            options.maxeventsoption,
+                            options.skipeventsoption,
+                            options.test)
     print "Number of jobs: ", len(jobchunks)
     for chunk in jobchunks:
         job=cesubmit.Job()
@@ -233,7 +282,7 @@ def expandFiles(gpdir, gpfilestring):
 
 def getJobChunks(files, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, test):
     if test:
-        return [[maxeventsoption, "100", files[0].path]]
+        return [ [maxeventsoption, "100", files[0]['path'] ]]
     if eventsperjob and not filesperjob:
         result = determineJobChunksByEvents(files, eventsperjob)
         return [[maxeventsoption, str(eventsperjob), skipeventsoption, str(skip)]+x for (skip, x) in result]
@@ -271,6 +320,18 @@ def getSkipEventsLocal(cummulativeLow, skipEventsGlobal):
         else:
             return skipEventsLocal
     return skipEventsLocal
+
+## This function may be used to implement dynamic creation of config files during submission
+#
+# Currently only MUSiC configs are implemented
+#@param options A ConfigOptions object holding current script wide options
+#@param args A list of additional command line arguments
+#@param A list of skims and samples as created by readConfig
+def prepareConfigs( skimlist, options ):
+    if options.prepareConfigs == "MUSiC":
+        from aix3adb2music import getConfigDicts,writeConfigDicts,flattenRemoteSkimDict
+        scalesdict, playlistdict = getConfigDicts( flattenRemoteSkimDict( skimlist ) )
+        writeConfigDicts( scalesdict, playlistdict , lumi=options.lumi )
 
 ## Yield successive n-sized chunks from l. The last chunk may be smaller than n.
 #

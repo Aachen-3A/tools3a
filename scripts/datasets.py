@@ -3,18 +3,37 @@
 import optparse
 
 datastreams = [
-               'SingleMu',
-               'SingleElectron',
-               'Tau',
-               'TauPlusX',
-               'Photon',
-               'Jet',
-               'MET',
-               'METBTag',
-               'DoubleMu',
-               'DoubleElectron',
-               'MuEG',
+               #'SingleMuon',
+               #'SingleElectron',
+               #'Tau',
+               #'TauPlusX',
+               #'Photon',
+               #'Jet',
+               #'MET',
+               #'METBTag',
+               #'DoubleMu',
+               #'DoubleElectron',
+               #'MuEG',
+               "BTagCSV",
+               "BTagMu",
+               "DoubleEG",
+               "DoubleMuon",
+               "DoubleMuonLowMass",
+               "EGamma",
+               "HTMHT",
+               "Jet",
+               "JetHT",
+               "MET",
+               "MuonEG",
+               "SingleElectron",
+               "SingleMu",
+               "SingleMuon",
+               "SinglePhoton",
+               "Tau",
                ]
+
+
+
 
 usage = "%prog RECO DCSFILES"
 
@@ -48,8 +67,10 @@ else:
 file = open( options.output , 'w' )
 
 if options.config:
-    print >> file, 'config = ' + options.config
-    print >> file
+    file.write( 'config = %s \n'%(options.config))
+    file.write('\n')
+
+file.write('isData = 1\n')
 
 for filename in args:
     run_min = filename.split( '-' )[1]

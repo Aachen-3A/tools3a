@@ -1,3 +1,4 @@
+#!/bin/env python
 ##@package RATA_PDF
 # RWTH Aachen Three A Parton Distribution Functions
 #
@@ -33,10 +34,11 @@ def init_pdfs(c_par,log_level,lib):
         debug_level = 4
 
     ## Call the init_bg function of the C++ library
+    #print lib.__dict__
     lib.init_bg.restype = None
     lib.init_bg(c_par["PDF_path"],c_par["n_pdfs"],c_par["PDFSets"],c_int(debug_level))
     logging.info("done")
-    
+
     ## Control output
     print("\t"+bcolors.OKGREEN+" done"+bcolors.ENDC)
     print("-"*20)
@@ -146,12 +148,12 @@ def calc_pdf_uncer(run_samples,options,c_par,pdf_cfg,mc_cfg,lib):
                     dummy_as_minus_number.append(int(i))
                 c_as_minus_number[:] = dummy_as_minus_number
                 lib.pdf_calcer_hessian.restype = None
-                lib.pdf_calcer_hessian(c_int(n_pdf_sets_1), 
+                lib.pdf_calcer_hessian(c_int(n_pdf_sets_1),
                 c_pdf_1,
                 create_string_buffer(out_file_1),
-                create_string_buffer(out_par_1), 
-                create_string_buffer(sg), 
-                create_string_buffer(mc_cfg["general"]["histname"]), 
+                create_string_buffer(out_par_1),
+                create_string_buffer(sg),
+                create_string_buffer(mc_cfg["general"]["histname"]),
                 create_string_buffer(i_pdf),
                 c_double(float(pdf_cfg["PDF_Groups"][i_pdf]["norm_pdf"])),
                 c_double(float(pdf_cfg["PDF_Groups"][i_pdf]["norm_as_plus"])),
@@ -169,12 +171,12 @@ def calc_pdf_uncer(run_samples,options,c_par,pdf_cfg,mc_cfg,lib):
                 c_pdf_1[:] = dummy_pdf_members
                 n_pdf_sets_1 = len(dummy_pdf_members)
                 lib.pdf_calcer_MC.restype = None
-                lib.pdf_calcer_MC(c_int(n_pdf_sets_1), 
+                lib.pdf_calcer_MC(c_int(n_pdf_sets_1),
                 c_pdf_1,
                 create_string_buffer(out_file_1),
-                create_string_buffer(out_par_1), 
-                create_string_buffer(sg), 
-                create_string_buffer(mc_cfg["general"]["histname"]), 
+                create_string_buffer(out_par_1),
+                create_string_buffer(sg),
+                create_string_buffer(mc_cfg["general"]["histname"]),
                 create_string_buffer(i_pdf)
                 )
 
@@ -201,17 +203,17 @@ def main():
     # Start with welcome output
     #
     welcome_output()
-    
+
     ############################
     # Parse all three config files
     #
     mc_cfg,xs_cfg,pdf_cfg = config_parsing(options)
-    
+
     ############################
     # Output to check if all parameters are correct
     #
     control_output(options,mc_cfg,pdf_cfg,xs_cfg)
-    
+
     ############################
     # Check if tmp folder exist, otherwise create it
     #
@@ -224,13 +226,16 @@ def main():
     #
     # export LD_LIBRARY_PATH=$PWD:$LD_LIBRARY_PATH
     logging.debug('loading library.so ...')
-        temp = os.path.abspath(__file__)
-        temp = os.path.realpath(temp)
-        temp = os.path.dirname(temp)
-        temp = os.path.join(temp, "../lib/library.so")
+    temp = os.path.abspath(__file__)
+    temp = os.path.realpath(temp)
+    temp = os.path.dirname(temp)
+    temp = os.path.join(temp, "library.so")
+    #temp = os.path.join(temp, "hist_maker")
+
+    lib = cdll.LoadLibrary(temp)
     lib = CDLL(temp)
     logging.debug('done')
-    
+
     ############################
     # Sort parameters for C++ functions
     #
@@ -264,7 +269,7 @@ def main():
     # TBD: include copier 'signal_mover.py'
     #
     calc_pdf_uncer(run_samples,options,c_par,pdf_cfg,mc_cfg,lib)
-        
+
     ############################
     # End with farewell output
     #

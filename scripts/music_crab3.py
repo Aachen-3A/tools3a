@@ -121,18 +121,21 @@ def main():
                 except HTTPException:
                     # Try resubmit once
                     controller.submit( configFileName )
-                submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
+                if runOnMC:
+                    submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
                 tasks_submitted.append( ( key, time.time() ) )
             # Delete folder and submit if --force option is used
             elif options.force:
                 shutil.rmtree( "crab_" + key )
                 controller.submit( configFileName )
-                submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
+                if runOnMC:
+                    submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
                 tasks_submitted.append( ( key, time.time() ) )
             else:
                 log.warning('Existing CRAB folder for tasks: %s not '\
                             'found (use force to submit anyway)' % key)
-                submitSample2db_dump_csv( key,"fail", SampleDict[ key ][1], SampleFileInfoDict, options )
+                if runOnMC:
+                    submitSample2db_dump_csv( key,"fail", SampleDict[ key ][1], SampleFileInfoDict, options )
                 tasks_existing.append( ( key, 'EXISTING' ) )
         if options.resubmit:
             controller.resubmit( configFileName )
@@ -230,8 +233,8 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'JobType', 'outputFiles', options.outputFiles )
     else:
         config.set( 'JobType', 'outputFiles', [name+".pxlio"]  )
-    if options.allowNonProductionCMSSW:
-        config.set( 'JobType', 'allowNonProductionCMSSW', 'True' )
+    if options.allowUndistributedCMSSW:
+        config.set( 'JobType', 'allowUndistributedCMSSW', 'True' )
     if options.maxmemory:
         try:
             config.set( 'JobType', 'maxmemory', "%d"%int(options.maxmemory ) )
@@ -261,7 +264,7 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'Data', 'splitting', 'LumiBased' )
         config.set( 'Data', 'unitsPerJob', lumisPerJob )
         if ".json" in lumi_mask:
-            config.set( 'Data', 'lumiMask', lumi_dir + lumi_mask )
+            config.set( 'Data', 'lumiMask', os.path.join(options.lumi_dir , lumi_mask) )
         else:
             config.set( 'Data', 'lumiMask', SampleFileInfoDict['DCSOnly_json'] )
             config.set( 'Data', 'runRange', lumi_mask )
@@ -281,8 +284,11 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
         config.set( 'Data', 'splitting', 'FileBased' )
         config.set( 'Data', 'unitsPerJob', '%d'%filesPerJob)
 
-    outdir = "/store/user/%s/%s/%s/%s/"%(options.user, options.name,  SampleFileInfoDict['gitTag'] ,name)
-    config.set( 'Data', 'outLFNDirBase', outdir.replace("//", "/" ) )
+    if options.outLFNDirBase:
+        outdir = os.path.join( '/store/user/', options.user, options.outLFNDirBase )
+    else:
+        outdir = os.path.join( '/store/user/', options.user, options.name, SampleFileInfoDict['gitTag'], name )
+    config.set( 'Data', 'outLFNDirBase', outdir )
 
     ## set default for now, will change later
     config.set( 'Data', 'publishDataName', SampleFileInfoDict['globalTag'] )
@@ -298,6 +304,9 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     config.add_section('Site')
     config.set( 'Site', 'storageSite', 'T2_DE_RWTH' )
 
+    if options.whitelist:
+        whitelists = options.whitelist.split(',')
+        config.set( 'Site', 'whitelist', whitelists )
 
     if options.blacklist:
         blacklists = options.blacklist.split(',')
@@ -337,11 +346,12 @@ def writeCrabConfig(name,config,options):
     else:
         runPath ="./"
     filename = '%s/crab_%s_cfg.py'%(runPath,name)
-    try:
-        config.writeCrabConfig(filename)
-        log.info( 'created crab config file %s'%filename )
-    except:
-        log.error("Could not create crab config file")
+    #try:
+    config.writeCrabConfig(filename)
+    log.info( 'created crab config file %s'%filename )
+    #except  Exception as e:
+        #log.error("Could not create crab config file %s"%e)
+        #sys.exit()
 
     return filename
 
@@ -379,7 +389,6 @@ def readSampleFile(filename,options):
             if line.startswith( 'maxJobRuntimeMin' ):
                 generator = line.split( '=' )[1].strip()
                 outdict.update({'maxJobRuntimeMin':options.maxJobRuntimeMin})
-                runOnMC = True
             if line.startswith( 'CME' ):
                 energy = line.split( '=' )[1].strip()
                 outdict.update({'energy':energy})
@@ -388,10 +397,12 @@ def readSampleFile(filename,options):
                 outdict.update({'DCSOnly_json':DCSOnly_json})
                 # set a default
                 outdict.update({'defaultUnitsPerJob':"20"})
-                runOnData = True
             if line.startswith( 'defaultUnitsPerJob' ):
                 defaultLumisPerJob= line.split( '=' )[1].strip()
                 outdict.update({'defaultLumisPerJob':defaultLumisPerJob})
+            if line.startswith( 'isData' ):
+                runOnData = bool(line.split( '=' )[1].strip())
+                runOnMC = not (runOnData)
             if line.startswith( 'config' ):
                 (junk,pset) = line.split( '=' )
                 pset = os.path.join( options.config_dir, pset.strip() )
@@ -415,14 +426,11 @@ def readSampleFile(filename,options):
                 if ';' in line:
                     split_line = line.split( ';' )
                     first_part = split_line[ 0 ]
-                    if ".json" in split_line[1]:
-                        lumi_mask = os.path.join( options.lumi_dir, split_line[ 1 ] )
-                    else:
-                        lumi_mask = split_line[1].strip()
+                    lumi_mask = split_line[ 1 ].strip()
                     if len( split_line ) > 2:
                         lumisPerJob = int( split_line[ 2 ] )
                     else:
-                        lumisPerJob = lumisPerJob
+                        lumisPerJob = options.unitsPerJob
                 else:
                     first_part = line
                     lumi_mask = None
@@ -679,7 +687,7 @@ def createTag( options ):
             if output:
                 error  = "Repository in '%s' has uncommitted changes.\n" % skimmer_dir
                 error += "It is strongly recommended that you commit your changes and rerun this script.\n"
-                error += "If you know what you are doing, you can use the '--no-tag' option to submit anyway!"
+                error += "If you know what you are doing, you can use the '--noTag' option to submit anyway!"
                 log.error( error )
                 return False
             return True
@@ -741,14 +749,21 @@ def commandline_parsing( parsingController ):
     # The following options
     # were already present in muic_crab
     ####################################
-    skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer' )
-    lumi_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/lumi' )
-    config_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming/test/configs' )
+    skimmer_dir = os.path.join( os.environ[ 'CMSSW_BASE' ], 'src/PxlSkimmer/Skimming' )
+    lumi_dir    = os.path.join( skimmer_dir, 'test/lumi' )
+    config_dir  = os.path.join( skimmer_dir, 'test/configs' )
     parser = optparse.OptionParser( description='Submit MUSiCSkimmer jobs for all samples listed in DATASET_FILE',  usage='usage: %prog [options] DATASET_FILE' )
     parser.add_option( '-c', '--config', metavar='FILE', help='Use FILE as CMSSW config file, instead of the one declared in DATASET_FILE' )
-    parser.add_option( '--config-dir', metavar='DIR', default=config_dir, help='Directory containing CMSSW configs [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/configs]' )
-    parser.add_option( '--lumi-dir', metavar='DIR', default=lumi_dir, help='Directory containing luminosity-masks [default: $CMSSW_BASE/src/PxlSkimmer/Skimming/test/lumi]' )
-    parser.add_option( '--ana-dir', metavar='DIR', default=skimmer_dir, help='Directory containing the analysis [default: $CMSSW_BASE/src/PxlSkimmer/]' )
+    parser.add_option( '--ana-dir', metavar='ANADIR', default=skimmer_dir,
+                       help='Directory containing the analysis. If set, ANADIR is used '\
+                            'as the base directory for CONFDIR and LUMIDIR. [default: '\
+                            '%default]' )
+    parser.add_option( '--config-dir', metavar='CONFDIR', default=config_dir,
+                       help='Directory containing CMSSW configs. Overwrites input from '\
+                            'ANADIR. [default: %default]' )
+    parser.add_option( '--lumi-dir', metavar='LUMIDIR', default=lumi_dir,
+                       help='Directory containing luminosity-masks. Overwrites input '\
+                            'from ANADIR. [default: %default]' )
     parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
                        help='Only submit samples matching PATTERNS (bash-like ' \
                             'patterns only, comma separated values. ' \
@@ -761,6 +776,7 @@ def commandline_parsing( parsingController ):
                        help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
     #~ parser.add_option( '--noTag', action='store_true', default=False,
     parser.add_option( '--noTag', action='store_true', default=False,help="Do not create a tag in the skimmer repository. [default: %default]" )
+    parser.add_option( '-w', '--whitelist', metavar='SITES', help="Whitelist SITES in a comma separated list, e.g. 'T2_DE_RWTH,T2_US_Purdue'." )
     parser.add_option( '-b', '--blacklist', metavar='SITES', help='Blacklist SITES in addition to T0,T1 separated by comma, e.g. T2_DE_RWTH,T2_US_Purdue  ' )
     parser.add_option( '-D', '--db', action='store_true', default=False,
                        help="Register all datasets at the database: 'https://cern.ch/aix3adb/'. [default: %default]" )
@@ -769,7 +785,7 @@ def commandline_parsing( parsingController ):
     #//////////////////////////////
 
     # new feature alternative username
-    parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
+    parser.add_option( '-u', '--user', metavar='USERNAME', help='Alternative username [default: HN-username]' )
     parser.add_option( '-g','--globalTag', help='Override globalTag from pset')
     parser.add_option( '--resubmit',action='store_true', default=False, help='Try to resubmit jobs instead of submit')
     parser.add_option( '--force',action='store_true', default=False, help='Delete existing crab folder and resubmit tasks')
@@ -798,26 +814,36 @@ def commandline_parsing( parsingController ):
     parser.add_option('--inputFiles',help='List of private input files needed by the jobs. ')
     parser.add_option('--outputFiles',help='List of output files that need to be collected, besides those already specified in the output'\
                                                 ' modules or TFileService of the CMSSW parameter-set configuration file.  ')
-    parser.add_option('--allowNonProductionCMSSW', action='store_true',default=False,help='Set to True to allow using a CMSSW release possibly not available at sites. Defaults to False. ')
+    parser.add_option( '--allowUndistributedCMSSW', action='store_true', default=False,
+                       help='Allow using a CMSSW release potentially not available at sites. [default: %default]' )
     parser.add_option('--maxmemory',help=' Maximum amount of memory (in MB) a job is allowed to use. ')
-    parser.add_option('--maxJobRuntimeMin',help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72]" )
+    parser.add_option('--maxJobRuntimeMin',help="Overwrite the maxJobRuntimeMin if present in samplefile [default: 72] (set by crab)" )
     parser.add_option('--numcores', help="Number of requested cores per job. [default: 1]" )
     parser.add_option('--priority', help='Task priority among the user\'s own tasks. Higher priority tasks will be processed before lower priority.'\
                                                     ' Two tasks of equal priority will have their jobs start in an undefined order. The first five jobs in a'\
                                                     ' task are given a priority boost of 10. [default  10] ' )
     parser.add_option('-n','--name', default="PxlSkim" ,
                       help="Name for this analysis run (E.g. Skim Campaign Name) [default: %default]")
-    parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: False]")
+    parser.add_option('--publish',default = False,help="Switch to turn on publication of a processed sample [default: %default]")
     ####################################
     # new options for Data in pset
     ####################################
-    parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: 10.000]")
+    parser.add_option('--eventsPerJob',default=10000,help="Number of Events per Job for MC [default: %default]")
+    ####################################
+    # new options for Site in pset
+    ####################################
+    parser.add_option( '--outLFNDirBase', metavar='OUTLFNDIRBASE', default=None,
+                       help="Set dCache directory for crab output to '/store/user/USERNAME/"\
+                            "OUTLFNDIRBASE'. [default: 'store/user/USERNAME/PxlSkim/git-tag/']" )
+    parser.add_option('--unitsPerJob',default="20",help="Suggests (but not impose) how many units (i.e. files, luminosity sections or events [1] -depending on the splitting mode-) to include in each job.  [default: %default]")
     parser.add_option('--ignoreLocality',action='store_true',default=False,help="Set to True to allow jobs to run at any site,"
                                                         "regardless of whether the dataset is located at that site or not. "\
                                                         "Remote file access is done using Xrootd. The parameters Site.whitelist"\
                                                         " and Site.blacklist are still respected. This parameter is useful to allow "\
-                                                        "jobs to run on other sites when for example a dataset is available on only one"\
-                                                        " or a few sites which are very busy with jobs. Defaults to False. ")
+                                                        "jobs to run on other sites when for example a dataset is available on only one "\
+                                                        "or a few sites which are very busy with jobs. It is strongly recommended "\
+                                                        "to provide a whitelist of sites physically close to the input dataset's host "\
+                                                        "site. This helps reduce file access latency. [default: %default]" )
 
     # we need to add the parser options from other modules
     #get crab command line options
@@ -835,6 +861,17 @@ def commandline_parsing( parsingController ):
     #get current user HNname
     if not options.user:
         options.user = parsingController.checkusername()
+
+    # Set CONFDIR and LUMIDIR relative to ANADIR if ANADIR is set
+    # but the other two are not.
+    if not options.ana_dir == skimmer_dir:
+        # ANADIR was set (it is not at its default value).
+        if options.lumi_dir == lumi_dir:
+            # LUMIDIR was not set (it is at its default value).
+            options.lumi_dir = os.path.join( options.ana_dir, 'test/lumi' )
+        if options.config_dir == config_dir:
+            # CONFDIR was not set (it is at its default value).
+            options.config_dir = os.path.join( options.ana_dir, 'test/configs' )
 
     return (options, args )
 
