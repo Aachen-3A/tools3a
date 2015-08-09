@@ -18,7 +18,8 @@ import pprint
 import logging
 import collections
 import signal
-
+import ROOT
+import rootplotlib
 waitingForExit = False
 
 
@@ -139,6 +140,44 @@ def getRunTimeFromHistory(history):
     else:
         timedelta = datetime.datetime.fromtimestamp(endtime[0]) - datetime.datetime.fromtimestamp(starttime[0])
     return timerepr(timedelta)[3:]
+
+def statistics(taskList):
+    """Draw statistics
+    Draws a histogram of the time consumed by the finished jobs
+    """
+    rootplotlib.init()
+    c1=ROOT.TCanvas("c1","",600,600)
+    totaltimes, runtimes=[],[]
+    for t in taskList:
+        for j in t.jobs:
+            try:
+                starttime = [int(item[1]) for item in j.infos["history"] if item[0] == "REGISTERED"][0]
+                runtime = [int(item[1]) for item in j.infos["history"] if item[0] == "RUNNING"][0]
+                endtime = [int(item[1]) for item in j.infos["history"] if "DONE" in item[0]][0]
+            except (KeyError, AttributeError):
+                continue
+            totaltimes.append((endtime-starttime)/60)
+            runtimes.append((endtime-runtime)/60)
+    lo = min(min(totaltimes),min(runtimes))
+    hi = max(max(totaltimes),max(runtimes))
+    bins=int(min(100,len(runtimes)/10))
+    h1=ROOT.TH1F("h1","Run times",bins,lo,hi)
+    h2=ROOT.TH1F("h2","Total Times",bins,lo,hi)
+    h1.GetXaxis().SetTitle("#Delta t (min)")
+    h1.GetYaxis().SetTitle("Number of jobs")
+    h1.SetLineWidth(3)
+    h2.SetLineWidth(3)
+    h2.SetLineColor(ROOT.kRed)
+    for t in runtimes: h1.Fill(t)
+    for t in totaltimes: h2.Fill(t)
+    h1.Draw("hist")
+    h2.Draw("hist same")
+    legend=rootplotlib.Legend(pad=c1)
+    legend.AddEntry(h1,"run times","l")
+    legend.AddEntry(h2,"total times","l")
+    legend.Draw()
+    return (c1, h1, h2, legend)
+
 
 class Overview:
     """This class incorporates the 'graphical' overviews of tasks, jobs and jobinfo.
@@ -336,7 +375,7 @@ def main(stdscr, options, args, passphrase):
     pool = None
     while True:
         # main loop
-        stdscr.addstr(1, 0, "Exit <q>  Raise/lower update interval <+>/<-> ("+str(updateInterval)+")  More information <return>  Update <space>   ")
+        stdscr.addstr(1, 0, "Exit <q>  Raise/lower update interval <+>/<-> ("+str(updateInterval)+")  More information <return>  Update <space>  Statistics <s> ")
         stdscr.addstr(2, 0, "Resubmit by Status:  Aborted <1>, Done-Failed <2>, (Really-)Running <3>, None <4>, Done-Ok exit!=0 <5>")
         stdscr.addstr(3, 0, "Resubmit job/task <r> Resubmit all tasks <R>  Kill job/task <k> Kill all tasks <K> clear fini <cC>")
         stdscr.addstr(4, 0, "Next update {0}       ".format(timerepr(nextUpdate(lastUpdate, updateInterval, nextTaskId))))
@@ -442,6 +481,8 @@ def main(stdscr, options, args, passphrase):
         elif c==ord('C'):
             clearFinishedJobs(taskList)
             overview = Overview(stdscr, taskList, resubmitList, killList, 0)
+        elif c==ord('s'):
+            dummy = statistics(taskList)
         elif c==ord('t'):
             logger.warning("warning")
             logger.info("info")
