@@ -20,6 +20,7 @@ import collections
 import signal
 import ROOT
 import rootplotlib
+import math
 waitingForExit = False
 
 
@@ -152,15 +153,25 @@ def statistics(taskList):
         for j in t.jobs:
             try:
                 starttime = [int(item[1]) for item in j.infos["history"] if item[0] == "REGISTERED"][0]
-                runtime = [int(item[1]) for item in j.infos["history"] if item[0] == "RUNNING"][0]
-                endtime = [int(item[1]) for item in j.infos["history"] if "DONE" in item[0]][0]
-            except (KeyError, AttributeError):
+            except (IndexError, KeyError, AttributeError):
                 continue
+            try:
+                endtime = [int(item[1]) for item in j.infos["history"] if "DONE" in item[0]][0]
+            except (IndexError, KeyError, AttributeError):
+                endtime=time.time()
+            try:
+                runtime = [int(item[1]) for item in j.infos["history"] if item[0] == "RUNNING"][0]
+            except (IndexError, KeyError, AttributeError):
+                runtime=endtime
             totaltimes.append((endtime-starttime)/60)
             runtimes.append((endtime-runtime)/60)
-    lo = min(min(totaltimes),min(runtimes))
-    hi = max(max(totaltimes),max(runtimes))
-    bins=int(min(100,len(runtimes)/10))
+            print "xxx",len(runtimes),len(totaltimes)
+    try:
+        lo = min(min(totaltimes),min(runtimes))
+        hi = max(max(totaltimes),max(runtimes))
+    except ValueError:
+        return None
+    bins=int(min(100,math.ceil(len(runtimes)/10)))
     h1=ROOT.TH1F("h1","Run times",bins,lo,hi)
     h2=ROOT.TH1F("h2","Total Times",bins,lo,hi)
     h1.GetXaxis().SetTitle("#Delta t (min)")
