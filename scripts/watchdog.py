@@ -25,6 +25,7 @@ def commandline_parsing():
     parser.add_argument('-i', '--kIdle',     action='store_true', help='Try to kill stuck idle jobs')
     parser.add_argument('-u', '--update',    action='store_true', help='Update latest skim instead of creating a new one. This sets the --ignoreComplete option true')
     parser.add_argument('--ignoreComplete',  action='store_true', help='Do not skip previously finalized samples')
+    parser.add_argument('--addIncomplete',  action='store_true', help='Submit all samples to db, even if they are not finished')
     args = parser.parse_args()
 
     if args.update: args.ignoreComplete = True
@@ -61,20 +62,6 @@ def readLogArch(logArchName):
     return log
 
 def finalizeSample(sample,dblink, args):
-    generators = {}
-    generators.update({ 'MG':'madgraph' })
-    generators.update({ 'PH':'powheg' })
-    generators.update({ 'HW':'herwig6' })
-    generators.update({ 'HP':'herwigpp' })
-    generators.update({ 'HW':'herwig' })
-    generators.update({ 'SP':'sherpa' })
-    generators.update({ 'MC':'mcatnlo' })
-    generators.update({ 'AG':'alpgen' })
-    generators.update({ 'CA':'calchep' })
-    generators.update({ 'CO':'comphep'  })
-    generators.update({ 'P6':'pythia6' })
-    generators.update({ 'P8':'pythia8' })
-    generators.update({ 'PY':'pythia8' })
 
     config = read_crabconfig( sample )
     outlfn = config.Data.outLFNDirBase.split('/store/user/')[1]
@@ -108,70 +95,131 @@ def finalizeSample(sample,dblink, args):
         if len(dfile)  > 0 and log['readEvents'] > 0 :
             finalFiles.append(  {'path':dfile[0], 'nevents':log['readEvents']} )
             totalEvents += log['readEvents']
-    newInDB = False
+    global runOnMC
+    global runOnData
+    # find out if we work on dat or mc
+    try:
+        test = config.Data.lumiMask
+        runOnMC = False
+    except:
+        runOnMC = True
+    runOnData = not runOnMC
+
     if runOnMC:
-        # get infos from McM
-        mcmutil = dbutilscms.McMUtilities()
-        mcmutil.readURL( config.Data.inputDataset )
-        # try to get sample db entry and create it otherwise
-        try:
-            dbSample = dblink.getMCSample( sample )
-        except Aix3adbException:
-            dbSample = aix3adb.MCSample()
-            newInDB = True
-            dbSample.name = sample
-            dbSample.generator = generators[ sample.split("_")[-1] ]
-            dbSample.crosssection = str(mcmutil.getCrossSection())
-            dbSample.crosssection_reference = 'McM'
-            dbSample.filterefficiency = mcmutil.getGenInfo('filter_efficiency')
-            dbSample.filterefficiency_reference = 'McM'
-            dbSample.kfactor = 1.
-            dbSample.kfactor_reference = "None"
-            dbSample.energy = mcmutil.getEnergy()
-
-        if newInDB:
-            dbSample = dblink.insertMCSample(dbSample)
-        else:
-            dbSample = dblink.editMCSample(dbSample)
-
-        if args.update and not newInDB:
-            mcSkim, mcSample  =  dblink.getMCLatestSkimAndSampleBySample( dbSample.name )
-        else:
-            mcSkim = aix3adb.MCSkim()
-        # create relation to dbsample object
-        mcSkim.sampleid = dbSample.id
-        mcSkim.datasetpath = config.Data.inputDataset
-        mcSkim.owner = crab.checkusername()
-        mcSkim.is_created = 1
-        mcSkim.is_finished = 1
-        mcSkim.is_deprecated  = 0
-        now = datetime.datetime.now()
-        mcSkim.files = finalFiles
-        mcSkim.created_at = now.strftime( "%Y-%m-%d %H-%M-%S" )
-        # where to get the skimmer name ??? MUSiCSkimmer fixed
-        mcSkim.skimmer_name = "PxlSkimmer"
-        mcSkim.skimmer_version = outlfn.split("/")[2]
-        mcSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
-        mcSkim.skimmer_globaltag = [p.replace("globalTag=","").strip() for p in config.JobType.pyCfgParams if "globalTag" in p][0]
-        mcSkim.nevents = str(totalEvents)
-        if args.update:
-            dblink.editMCSkim( mcSkim )
-        else:
-            dblink.insertMCSkim( mcSkim )
-
-
+        addMC2db(sample,dblink, args, config, finalFiles, totalEvents)
     elif runOnData:
-        # try to get sample db entry and create it otherwise
-        dbSample = dblink.getDataSample( datasetpath )
-        if not dbSample:
-            dbSample = aix3adb.DataSample( datasetpath )
-            dblink.insertDataSample( dbsample )
-        dataSkim = aix3adb.DataSkim( dbSample )
+        addData2db(sample,dblink, args, config, finalFiles, totalEvents)
 
     #~ elif runOnGen:
         #~ log.info("Gen Samples are not saved to db")
     with open('finalSample','a') as outfile:
         outfile.write("%s:%s\n" % (sample,  config.Data.inputDataset))
+
+def addData2db(sample,dblink, args, config, finalFiles, totalEvents):
+    crab = crabFunctions.CrabController()
+    # try to get sample db entry and create it otherwise
+    newInDB = False
+    try:
+        dbSample = dblink.getDataSample( sample  )
+    except Aix3adbException:
+        newInDB = True
+        dbSample = aix3adb.DataSample( )
+        dbSample.name = sample
+    # update fields
+    dbSample.energy = 13
+
+    if newInDB:
+        dblink.insertDataSample( dbsample )
+        # get sample again with its new id
+        dbSample = dblink.getDataSample( sample  )
+    else:
+        dblink.editDataSample( dbsample )
+
+    if args.update and not newInDB:
+        dbSkim, dbSample  =  dblink.getDataLatestSkimAndSampleBySample( dbSample.name )
+    else:
+        dbSkim = aix3adb.MCSkim()
+
+    fillCommonSkimFields( dbSample, dbSkim , config, finalFiles )
+    ## fill additional fields for data
+    dbSkim.jsonfile = config.Data.lumiMask.split("/")[-1]
+    if args.update:
+        dblink.editDataSkim( dbSkim )
+    else:
+        dblink.insertDataSkim( dbSkim )
+
+def addMC2db(sample,dblink, config, finalFiles, totalEvents):
+    crab = crabFunctions.CrabController()
+    generators = {}
+    generators.update({ 'MG':'madgraph' })
+    generators.update({ 'PH':'powheg' })
+    generators.update({ 'HW':'herwig6' })
+    generators.update({ 'HP':'herwigpp' })
+    generators.update({ 'HW':'herwig' })
+    generators.update({ 'SP':'sherpa' })
+    generators.update({ 'MC':'mcatnlo' })
+    generators.update({ 'AG':'alpgen' })
+    generators.update({ 'CA':'calchep' })
+    generators.update({ 'CO':'comphep'  })
+    generators.update({ 'P6':'pythia6' })
+    generators.update({ 'P8':'pythia8' })
+    generators.update({ 'PY':'pythia8' })
+    newInDB = False
+        # get infos from McM
+    mcmutil = dbutilscms.McMUtilities()
+    mcmutil.readURL( config.Data.inputDataset )
+    # try to get sample db entry and create it otherwise
+    try:
+        dbSample = dblink.getMCSample( sample )
+    except Aix3adbException:
+        dbSample = aix3adb.MCSample()
+        newInDB = True
+        dbSample.name = sample
+        dbSample.generator = generators[ sample.split("_")[-1] ]
+        dbSample.crosssection = str(mcmutil.getCrossSection())
+        dbSample.crosssection_reference = 'McM'
+        dbSample.filterefficiency = mcmutil.getGenInfo('filter_efficiency')
+        dbSample.filterefficiency_reference = 'McM'
+        dbSample.kfactor = 1.
+        dbSample.kfactor_reference = "None"
+        dbSample.energy = mcmutil.getEnergy()
+
+    if newInDB:
+        dbSample = dblink.insertMCSample(dbSample)
+    else:
+        dbSample = dblink.editMCSample(dbSample)
+
+    if args.update and not newInDB:
+        mcSkim, mcSample  =  dblink.getMCLatestSkimAndSampleBySample( dbSample.name )
+    else:
+        mcSkim = aix3adb.MCSkim()
+
+    fillCommonSkimFields( dbSample, mcSkim , config, finalFiles )
+
+    if args.update:
+        dblink.editMCSkim( mcSkim )
+    else:
+        dblink.insertMCSkim( mcSkim )
+
+def fillCommonSkimFields( dbSample, dbSkim , config, finalFiles ):
+    # create relation to dbsample object
+    dbSkim.sampleid = dbSample.id
+    dbSkim.datasetpath = config.Data.inputDataset
+    dbSkim.owner = crab.checkusername()
+    dbSkim.iscreated = 1
+    dbSkim.isfinished = 1
+    dbSkim.isdeprecated  = 0
+    now = datetime.datetime.now()
+    dbSkim.files = finalFiles
+    dbSkim.created_at = now.strftime( "%Y-%m-%d %H-%M-%S" )
+    # where to get the skimmer name ??? MUSiCSkimmer fixed
+    dbSkim.skimmer_name = "PxlSkimmer"
+    outlfn = config.Data.outLFNDirBase.split('/store/user/')[1]
+    dbSkim.skimmer_version = outlfn.split("/")[2]
+    dbSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
+    dbSkim.skimmer_globaltag = [p.replace("globalTag=","").strip() for p in config.JobType.pyCfgParams if "globalTag" in p][0]
+    dbSkim.nevents = str(totalEvents)
+
 def createDBlink():
     # Create a database object.
     dblink = aix3adb.aix3adb()
@@ -204,7 +252,7 @@ def main():
             i+=1
             #~ state,jobs = crab.status(sample)
             task = crabFunctions.CrabTask(sample)
-            if "COMPLETE" == task.state and not args.noFinalize:
+            if "COMPLETE" == task.state and not args.noFinalize or args.addIncomplete:
                 finalizeSample( sample, dblink, args )
             if args.rFailed and "FAILED" == task.state:# or "KILLED" == task.state:
                 cmd = 'crab resubmit --wait %s' %crab._prepareFoldername(sample)
