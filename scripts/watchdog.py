@@ -26,6 +26,7 @@ def commandline_parsing():
     parser.add_argument('-u', '--update',    action='store_true', help='Update latest skim instead of creating a new one. This sets the --ignoreComplete option true')
     parser.add_argument('--ignoreComplete',  action='store_true', help='Do not skip previously finalized samples')
     parser.add_argument('--addIncomplete',  action='store_true', help='Submit all samples to db, even if they are not finished')
+    parser.add_argument('--only', action='store', dest='folder_tag', default='', help='Only loop over folder containing a string')
     args = parser.parse_args()
 
     if args.update: args.ignoreComplete = True
@@ -236,6 +237,8 @@ def main():
     crab = crabFunctions.CrabController()
     #~ crabFolder = crab.crabFolders[0]
     crabSamples = [crabFolder.replace('crab_','') for crabFolder in crab.crabFolders]
+    if args.folder_tag!='':
+        crabSamples = filter(lambda x: args.folder_tag in x, crabSamples)
     sample = crabSamples[0]
     dblink = createDBlink()
     skipped_final = []
