@@ -129,18 +129,18 @@ def addData2db(sample,dblink, args, config, finalFiles, totalEvents):
     dbSample.energy = 13
 
     if newInDB:
-        dblink.insertDataSample( dbsample )
+        dblink.insertDataSample( dbSample )
         # get sample again with its new id
         dbSample = dblink.getDataSample( sample  )
     else:
-        dblink.editDataSample( dbsample )
+        dblink.editDataSample( dbSample )
 
     if args.update and not newInDB:
         dbSkim, dbSample  =  dblink.getDataLatestSkimAndSampleBySample( dbSample.name )
     else:
         dbSkim = aix3adb.MCSkim()
 
-    fillCommonSkimFields( dbSample, dbSkim , config, finalFiles )
+    fillCommonSkimFields( dbSample, dbSkim , config, finalFiles, totalEvents )
     ## fill additional fields for data
     dbSkim.jsonfile = config.Data.lumiMask.split("/")[-1]
     if args.update:
@@ -194,17 +194,18 @@ def addMC2db(sample,dblink, config, finalFiles, totalEvents):
     else:
         mcSkim = aix3adb.MCSkim()
 
-    fillCommonSkimFields( dbSample, mcSkim , config, finalFiles )
+    fillCommonSkimFields( dbSample, mcSkim , config, finalFiles, totalEvents )
 
     if args.update:
         dblink.editMCSkim( mcSkim )
     else:
         dblink.insertMCSkim( mcSkim )
 
-def fillCommonSkimFields( dbSample, dbSkim , config, finalFiles ):
+def fillCommonSkimFields( dbSample, dbSkim , config, finalFiles, totalEvents ):
     # create relation to dbsample object
     dbSkim.sampleid = dbSample.id
     dbSkim.datasetpath = config.Data.inputDataset
+    crab = crabFunctions.CrabController()
     dbSkim.owner = crab.checkusername()
     dbSkim.iscreated = 1
     dbSkim.isfinished = 1
