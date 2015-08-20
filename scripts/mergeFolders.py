@@ -12,6 +12,7 @@ import multiprocessing
 import time
 import re
 from random import randint
+import shutil
 
 # main function is called at the end.
 #
@@ -40,6 +41,8 @@ def main():
 
     extractRootFiles(options)
     megeRootFiles(options)
+    alljdls=glob.glob(options.inputFolder+"/*/job*.jdl")
+    shutil.copyfile(alljdls[0], os.path.join(options.inputFolder,"example.jdl"))
     if options.clean:
         cleanUp(options)
 
@@ -55,6 +58,8 @@ def multiextractRoot(splited):
     subprocess.call("tar -xzf %s MusicOutDir/events_after_cuts.txt"%(splited[1]),shell=True)
     subprocess.call("tar -xzf %s MusicOutDir/SpecialHistos.root"%(splited[1]),shell=True)
     subprocess.call("mv MusicOutDir/SpecialHistos.root SpecialHistos.root",shell=True)
+    if not os.path.exists("SpecialHistos.root"):
+        print "missing hist in %s"%(splited[0])
     os.chdir( thidir )
 
 def extractRootFiles(options):
@@ -128,7 +133,8 @@ def megeRootFiles(options):
         log.debug(out)
         log.debug(err)
     if hasData:
-        command= "hadd -f9 "+outputFolder+"/"+"allData.root "+outputFolder+"/"+"Data_*.root"
+        all_merged_data_files=[outputFolder+"/"+"Data_%s.root "%(dataSample)  for dataSample in dataSamples]
+        command= "hadd -f9 "+outputFolder+"/"+"allData.root "+" ".join(all_merged_data_files)
         print command
         p = subprocess.Popen(command,shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
         out, err = p.communicate()
