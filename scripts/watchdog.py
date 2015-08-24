@@ -107,16 +107,16 @@ def finalizeSample(sample,dblink, args):
     runOnData = not runOnMC
 
     if runOnMC:
-        addMC2db(sample,dblink, args, config, finalFiles, totalEvents)
+        addMC2db(sample, dblink, args, config, finalFiles, totalEvents)
     elif runOnData:
-        addData2db(sample,dblink, args, config, finalFiles, totalEvents)
+        addData2db(sample, dblink, args, config, finalFiles, totalEvents)
 
     #~ elif runOnGen:
         #~ log.info("Gen Samples are not saved to db")
     with open('finalSample','a') as outfile:
         outfile.write("%s:%s\n" % (sample,  config.Data.inputDataset))
 
-def addData2db(sample,dblink, args, config, finalFiles, totalEvents):
+def addData2db(sample, dblink, args, config, finalFiles, totalEvents):
     crab = crabFunctions.CrabController()
     # try to get sample db entry and create it otherwise
     newInDB = False
@@ -149,7 +149,7 @@ def addData2db(sample,dblink, args, config, finalFiles, totalEvents):
     else:
         dblink.insertDataSkim( dbSkim )
 
-def addMC2db(sample,dblink, config, finalFiles, totalEvents):
+def addMC2db(sample, dblink, args, config, finalFiles, totalEvents):
     crab = crabFunctions.CrabController()
     generators = {}
     generators.update({ 'MG':'madgraph' })
