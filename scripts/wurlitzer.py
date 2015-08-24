@@ -130,6 +130,26 @@ def main( options, args):
             if options.verbose:
                 print task.name
             task.resubmit(resubmitList[itask],processes=8)
+    if options.resubmit_failed:
+
+        taskList, resubmitList, killList = [], [], []
+        # load tasks from directories
+        for directory in args:
+            try:
+                task = cesubmit.Task.load(directory)
+            except:
+                continue
+            taskList.append(task)
+            resubmitList.append(set())
+            killList.append(set())
+
+        resubmitByStatus(taskList, resubmitList, ["DONE-OK"])
+        for itask,task in enumerate(taskList):
+            if len(resubmitList[itask])==0:
+                continue
+            if options.verbose:
+                print task.name
+            task.resubmit(resubmitList[itask],processes=8)
 
     if options.local:
 
@@ -145,6 +165,7 @@ def main( options, args):
             killList.append(set())
 
         resubmitByStatus(taskList, resubmitList, ["ABORTED","DONE-FAILED","None", None])
+        #resubmitByStatus(taskList, resubmitList, ["IDLE", None])
         for itask,task in enumerate(taskList):
             if len(resubmitList[itask])==0:
                 continue
@@ -213,6 +234,7 @@ if __name__ == "__main__":
     parser.add_option("--debug", action="store", dest="debug", help="Debug level (DEBUG, INFO, WARNING, ERROR, CRITICAL)", default="WARNING")
     parser.add_option("-v","--verbose",  action="store_true", dest="verbose", help="verbose output", default=False)
     parser.add_option("-r","--resubmit",  action="store_true", dest="resubmit", help="resubmit Failed/NONE jobs", default=False)
+    parser.add_option("-f","--resubmit-failed",  action="store_true", dest="resubmit_failed", help="resubmit that have a exit code !=1 jobs", default=False)
     parser.add_option("-l","--local",  action="store_true", dest="local", help="resubmit localy Failed/NONE jobs", default=False)
     parser.add_option("-t","--resubmitTime",  action="store_true", dest="resubmitTime", help="resubmit jobs that run longer than 1h jobs", default=False)
     (options, args) = parser.parse_args()
