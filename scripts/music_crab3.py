@@ -72,7 +72,7 @@ def main():
         sys.exit(1)
 
     # Check if the current commit is tagged or tag it otherwise
-    if not options.noTag:
+    if not options.noTag or options.overrideTag != "noTag":
         try:
             gitTag = createTag( options )
             SampleFileInfoDict.update({'gitTag':gitTag})
@@ -80,7 +80,7 @@ def main():
             log.error( e )
             sys.exit( 3 )
     else:
-        SampleFileInfoDict.update({'gitTag':'noTag'})
+        SampleFileInfoDict.update( { 'gitTag':options.overrideTag } )
 
     log.info("after tag")
     log.info(controller.checkusername())
@@ -777,6 +777,7 @@ def commandline_parsing( parsingController ):
                        help='Set the debug level. Allowed values: ' + ', '.join( log_choices ) + ' [default: %default]' )
     #~ music_crabOpts.add_option( '--noTag', action='store_true', default=False,
     music_crabOpts.add_option( '--noTag', action='store_true', default=False,help="Do not create a tag in the skimmer repository. [default: %default]" )
+    music_crabOpts.add_option( '--overrideTag', default="noTag",help="Same as noTag but with custom string replacement for the tag name. [default: %default]" )
 
     music_crabOpts.add_option( '-D', '--db', action='store_true', default=False,
                        help="Register all datasets at the database: 'https://cern.ch/aix3adb/'. [default: %default]" )
