@@ -100,6 +100,8 @@ def megeRootFiles(options):
     if not os.path.exists(outputFolder):
         os.makedirs(outputFolder)
     for sample in glob.glob(options.inputFolder+"/*"):
+        if os.path.isfile(sample):
+            continue
         if "merged" in sample or "Exe" in sample or ".sh" in sample:
             continue
         csample=sample.split("/")[-1]
