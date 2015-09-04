@@ -65,12 +65,12 @@ else:
     options.datastreams = datastreams
 
 file = open( options.output , 'w' )
-
+file.write('isData = 1\n')
 if options.config:
     file.write( 'config = %s \n'%(options.config))
     file.write('\n')
 
-file.write('isData = 1\n')
+
 
 for filename in args:
     run_min = filename.split( '-' )[1]
