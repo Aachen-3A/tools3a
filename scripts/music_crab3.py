@@ -257,7 +257,7 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     #when the JEC is in the global tag remove this part!!!
     files_to_copy=['Summer15_50nsV5_DATA.db', 'Summer15_50nsV5_MC.db']
     for era in files_to_copy:
-        shutil.copyfile(os.path.abspath(os.environ['CMSSW_BASE']+"/src/PxlSkimmer/Skimming/data/"+era+".db"), os.path.abspath("./"+era+".db")
+        shutil.copyfile(os.path.abspath(os.environ['CMSSW_BASE']+"/src/PxlSkimmer/Skimming/data/"+era+".db"), os.path.abspath("./"+era+".db"))
     config.set( 'JobType','inputFiles', files_to_copy)
     #up to here
     #by the way if anyone finds a way to get an abs path into a cmssw python file tell me!!! ggrrr!
