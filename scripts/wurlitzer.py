@@ -165,7 +165,6 @@ def main( options, args):
             killList.append(set())
 
         resubmitByStatus(taskList, resubmitList, ["ABORTED","DONE-FAILED","None", None])
-        #resubmitByStatus(taskList, resubmitList, ["IDLE", None])
         for itask,task in enumerate(taskList):
             if len(resubmitList[itask])==0:
                 continue

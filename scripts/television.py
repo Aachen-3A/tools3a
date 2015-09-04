@@ -146,9 +146,10 @@ def statistics(taskList):
     """Draw statistics
     Draws a histogram of the time consumed by the finished jobs
     """
-    rootplotlib.init()
+    #rootplotlib.init()
     c1=ROOT.TCanvas("c1","",600,600)
-    totaltimes, runtimes=[],[]
+    c1.UseCurrentStyle()
+    totaltimes, runtimes, finished=[],[],[]
     for t in taskList:
         for j in t.jobs:
             try:
@@ -165,7 +166,9 @@ def statistics(taskList):
                 runtime=endtime
             totaltimes.append((endtime-starttime)/60)
             runtimes.append((endtime-runtime)/60)
-            print "xxx",len(runtimes),len(totaltimes)
+            if "DONE" in j.status:
+                finished.append((endtime-runtime)/60)
+            #print "xxx",len(runtimes),len(totaltimes)
     try:
         lo = min(min(totaltimes),min(runtimes))
         hi = max(max(totaltimes),max(runtimes))
@@ -174,19 +177,25 @@ def statistics(taskList):
     bins=int(min(100,math.ceil(len(runtimes)/10)))
     h1=ROOT.TH1F("h1","Run times",bins,lo,hi)
     h2=ROOT.TH1F("h2","Total Times",bins,lo,hi)
+    h3=ROOT.TH1F("h3","finisched",bins,lo,hi)
     h1.GetXaxis().SetTitle("#Delta t (min)")
     h1.GetYaxis().SetTitle("Number of jobs")
     h1.SetLineWidth(3)
     h2.SetLineWidth(3)
     h2.SetLineColor(ROOT.kRed)
+    h3.SetLineColor(ROOT.kGreen)
     for t in runtimes: h1.Fill(t)
     for t in totaltimes: h2.Fill(t)
+    for t in finished: h3.Fill(t)
     h1.Draw("hist")
     h2.Draw("hist same")
+    h3.Draw("hist same")
     legend=rootplotlib.Legend(pad=c1)
     legend.AddEntry(h1,"run times","l")
     legend.AddEntry(h2,"total times","l")
+    legend.AddEntry(h3,"finished","l")
     legend.Draw()
+    c1.Update()
     return (c1, h1, h2, legend)
 
 
