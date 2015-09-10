@@ -18,7 +18,7 @@ datastreams = [
                "BTagMu",
                "DoubleEG",
                "DoubleMuon",
-               "DoubleMuonLowMass",
+               #"DoubleMuonLowMass",
                "EGamma",
                "HTMHT",
                "Jet",
@@ -27,7 +27,7 @@ datastreams = [
                "MuonEG",
                "SingleElectron",
                "SingleMu",
-               "SingleMuon",
+               #"SingleMuon",
                "SinglePhoton",
                "Tau",
                ]
@@ -46,7 +46,7 @@ description += "DSCFILES is a list of files in the form of DCS-<runmin>-<runmax>
 parser = optparse.OptionParser( usage = usage, description = description )
 parser.add_option( '-o', '--output', metavar = 'FILENAME', default = 'data.txt',
                    help = 'Set the filename where the results shall be stored.  [default = %default]' )
-parser.add_option( '-c', '--config', metavar = 'CONFIGNAME', default = 'data_cfg.py',
+parser.add_option( '-c', '--config', metavar = 'CONFIGNAME', default = 'data_miniAOD_cfg.py',
                    help = 'Set the name of the config file that shall be used for this dataset(s). [default = %default]' )
 parser.add_option( '-d', '--datastreams', metavar = 'DATASTREAMS', default = ','.join( datastreams ),
                    help = 'Set the datastream(s) (aka. Primary Datasets) you want to skim. [default = %default]' )
@@ -75,12 +75,13 @@ if options.config:
 for filename in args:
     run_min = filename.split( '-' )[1]
     run_max = filename.split( '-' )[2].split( '.' )[0]
+    cleanreco="-".join(reco.split("-")[:-1])
 
     if not filename.startswith( 'DCS-' ) or not filename.endswith( '.json' ) or not run_min.isdigit() or not run_max.isdigit():
         parser.error( "Expected files in the form of DCS-<runmin>-<runmax>.json but found: '%s'!" % filename )
 
     for datastream in options.datastreams:
-        string = 'Data' + '_' + run_min + '_' + run_max + '_' + datastream + ':/' + datastream + '/' + reco + ';' + filename
+        string = 'Data' + '_'+cleanreco+ '_' + run_min + '_' + run_max + '_' + datastream + ':/' + datastream + '/' + reco + ';' + filename
         print >> file, string
 
     # Do not put an empty line at the end of the file.

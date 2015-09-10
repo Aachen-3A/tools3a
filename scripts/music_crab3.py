@@ -108,7 +108,11 @@ def main():
     for key in SampleDict.keys():
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
         log.info("Created crab config object")
-        configFileName = writeCrabConfig(key,CrabConfig,options)
+        try:
+            configFileName = writeCrabConfig(key,CrabConfig,options)
+        except IOError as e:
+            log.error( "I/O error({0}): {1}".format(e.errno, e.strerror) )
+            continue
 
 
         # sampleInDB returns false if notInDB option is used to submit sample
@@ -257,7 +261,7 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     #when the JEC is in the global tag remove this part!!!
     files_to_copy=['Summer15_50nsV5_DATA.db', 'Summer15_50nsV5_MC.db']
     for era in files_to_copy:
-        shutil.copyfile(os.path.abspath(os.environ['CMSSW_BASE']+"/src/PxlSkimmer/Skimming/data/"+era+".db"), os.path.abspath("./"+era+".db"))
+        shutil.copyfile(os.path.abspath(os.environ['CMSSW_BASE']+"/src/PxlSkimmer/Skimming/data/"+era), os.path.abspath("./"+era))
     config.set( 'JobType','inputFiles', files_to_copy)
     #up to here
     #by the way if anyone finds a way to get an abs path into a cmssw python file tell me!!! ggrrr!
@@ -357,6 +361,8 @@ def writeCrabConfig(name,config,options):
         runPath ="./"
     filename = '%s/crab_%s_cfg.py'%(runPath,name)
     #try:
+    if os.path.exists(filename):
+        raise IOError("file %s alrady exits"%(filename))
     config.writeCrabConfig(filename)
     log.info( 'created crab config file %s'%filename )
     #except  Exception as e:
