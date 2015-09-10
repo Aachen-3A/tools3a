@@ -64,14 +64,14 @@ def linearStatusgetter(taskList,resubmitList,killList):
     taskList=res+finished
     return taskList
 
-def resubmitByStatus(taskList, resubmitList, status):
+def resubmitByStatus(taskList, resubmitList, status,force=False):
     """add jobs with a certain status to the resubmit list
     """
     myTaskIds, myTaskList=range(len(taskList)), taskList
     for (t, task) in zip(myTaskIds, myTaskList):
         for (j, job) in zip(range(len(task.jobs)), task.jobs):
-            if job.status in status:
-                if (job.status == "DONE-OK" and job.infos["ExitCode"]!="0") or job.status != "DONE-OK":
+            if job.status in status or force:
+                if ((job.status == "DONE-OK" and job.infos["ExitCode"]!="0") or job.status != "DONE-OK") or force:
                     resubmitList[t].add(j)
 
 def resubmitBytime(taskList, resubmitList, time):
@@ -164,7 +164,8 @@ def main( options, args):
             resubmitList.append(set())
             killList.append(set())
 
-        resubmitByStatus(taskList, resubmitList, ["ABORTED","DONE-FAILED","None", None])
+        resubmitByStatus(taskList, resubmitList, ["ABORTED","DONE-FAILED","None", None],options.force)
+        #resubmitByStatus(taskList, resubmitList, ["ABORTED","DONE-FAILED","DONE-OK","None", None])
         for itask,task in enumerate(taskList):
             if len(resubmitList[itask])==0:
                 continue
@@ -236,6 +237,7 @@ if __name__ == "__main__":
     parser.add_option("-f","--resubmit-failed",  action="store_true", dest="resubmit_failed", help="resubmit that have a exit code !=1 jobs", default=False)
     parser.add_option("-l","--local",  action="store_true", dest="local", help="resubmit localy Failed/NONE jobs", default=False)
     parser.add_option("-t","--resubmitTime",  action="store_true", dest="resubmitTime", help="resubmit jobs that run longer than 1h jobs", default=False)
+    parser.add_option("--force",  action="store_true", dest="force", help="force resubmit jobs", default=False)
     (options, args) = parser.parse_args()
     main( options, args)
 
