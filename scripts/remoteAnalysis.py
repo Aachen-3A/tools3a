@@ -38,9 +38,13 @@ def main():
     groupPrepare.add_option("--prepareConfigs", default = 'None',
                             choices=['None','MUSiC'],
                             help="Create config Files on the fly for given config style")
+    groupPrepare.add_option("--useListFiles", action = "store_true", default=False,
+                            help="Do not use fileslist from aix3adb but check on dCache instead")
     #groupPrepare.add_option("--local", action="store_true", help="Run the tasks on local computer.", default=False)
     #groupPrepare.add_option("--testlocal", action="store_true", help="Run only one task with one small job locally.", default=False)
     groupPrepare.add_option("-s", "--skipcheck", action="store_true", help="Skip check if grid pack is outdated.", default=False)
+    parser.add_option( '--outLFNDirBase', metavar='OUTLFNDIRBASE', default=None,
+                       help="Set dCache directory for crab output relative to /store/user/  [default: 'SKIMOWNER/PxlSkim/SKIMMERVERSION/']" )
     parser.add_option_group(groupPrepare)
     (options, args) = parser.parse_args()
     gridFunctions.checkAndRenewVomsProxy()
@@ -78,6 +82,23 @@ def readConfig(options,args):
     try:
         options.lumi = int( config.get('DEFAULT', 'lumi') )
     except:pass
+    try:
+        options.gridoutputfiles = options.gridoutputfiles.split(" ")
+    except:
+        print "error splitting gridoutputfiles"
+    try:
+        options.datasections = options.datasections.split(" ")
+    except:
+        print "error splitting datasections"
+    # parse some infos to other types
+    try:
+
+        options.eventsperjob = int(options.eventsperjob)
+    except:
+        try:
+            options.filesperjob = int(options.filesperjob)
+        except:
+            print "Error converting some files / rvents per job to int"
     sectionlist = {}
     for section in config.sections():
         if section in ["DEFAULT"]: continue
@@ -161,13 +182,9 @@ def makeTask(options, skim, sample, section, arguments):
     task.inputfiles.extend( expandFiles("", options.inputfiles ) )
     task.addGridPack( options.remotegridtarfile )
     for gridoutputfile in options.gridoutputfiles:
-        task.copyResultsToDCache( options.gridoutputfile )
-    jobchunks=getJobChunks( skim.files,
-                            options.eventsperjob,
-                            options.filesperjob,
-                            options.maxeventsoption,
-                            options.skipeventsoption,
-                            options.test)
+        task.copyResultsToDCache( gridoutputfile )
+    runfiles = prepareFileList(skim, sample, options)
+    jobchunks=getJobChunks( runfiles, options )
     print "Number of jobs: ", len(jobchunks)
     for chunk in jobchunks:
         job=cesubmit.Job()
@@ -280,16 +297,44 @@ def expandFiles(gpdir, gpfilestring):
     gppaths = [filename for sublist in [glob.glob(p) for p in [os.path.join(gpdir,f) for f in gpfiles]] for filename in sublist]
     return gppaths
 
-def getJobChunks(files, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, test):
-    if test:
-        return [ [maxeventsoption, "100", files[0]['path'] ]]
-    if eventsperjob and not filesperjob:
-        result = determineJobChunksByEvents(files, eventsperjob)
-        return [[maxeventsoption, str(eventsperjob), skipeventsoption, str(skip)]+x for (skip, x) in result]
-    elif filesperjob:
-        result = determineJobChunksByFiles(files, filesperjob)
+def getJobChunks(files, options):
+    if options.test:
+        return [ [options.maxeventsoption, "100", "--PXLIO_FILE" , files[0]['path'] ]]
+    if options.eventsperjob and not options.filesperjob:
+        result = determineJobChunksByEvents(files, options.eventsperjob)
+        return [ [ options.maxeventsoption,
+                   str(options.eventsperjob),
+                   options.skipeventsoption,
+                   str(skip)]+x
+                   for (skip, x) in result]
+    elif options.filesperjob:
+        print "type options.filesperjob"
+        print type(options.filesperjob)
+        result = determineJobChunksByFiles(files, options.filesperjob)
         return result
     raise Exception("Please specify either eventsperjob or filesperjob")
+
+## This function prepares a list of pxlio files depending on the chosen options
+#
+# @param A aix3adb skim object
+# @param Program wide options saved in Option class from optparse
+# @return A list of dicts as used in the skim.files field
+def prepareFileList(skim, sample, options):
+
+    if not options.useListFiles:
+        return skim.files
+
+    if options.outLFNDirBase is not None:
+        outlfn = os.path.join( options.outLFNDirBase, sample.name )
+    else:
+        outlfn = os.path.join( skim.owner, 'PxlSkim', skim.skimmer_version, sample.name )
+    print "use outlfn %s" % outlfn
+    dCacheFiles = []
+    for flist in gridFunctions.getdcachelist( outlfn ) :
+        dCacheFiles += flist
+    #format to correct list format as used by skim objects
+    dCacheFiles = [ {'path': dfile, 'nevents':-1} for dfile in dCacheFiles]
+    return dCacheFiles
 
 def determineJobChunksByFiles(files, filesperjob):
     filenames = [f['path'] for f in files]
@@ -307,6 +352,7 @@ def determineJobChunksByEvents(files, eventsperjob):
         filenames=getFileList(files, cummulativeHigh, cummulativeLow, skipEventsGlobal, eventsperjob)
         result.append((skipEventsLocal,filenames))
     return result
+
 
 def getFileList(files, cummulativeHigh, cummulativeLow, skipEventsGlobal, eventsperjob):
     filenames = [files[i]['path'] for i in xrange(len(files)) if skipEventsGlobal<=cummulativeHigh[i] and skipEventsGlobal+eventsperjob>cummulativeLow[i]]
@@ -330,7 +376,7 @@ def getSkipEventsLocal(cummulativeLow, skipEventsGlobal):
 def prepareConfigs( skimlist, options ):
     if options.prepareConfigs == "MUSiC":
         from aix3adb2music import getConfigDicts,writeConfigDicts,flattenRemoteSkimDict
-        scalesdict, playlistdict = getConfigDicts( flattenRemoteSkimDict( skimlist ) )
+        scalesdict, playlistdict = getConfigDicts( flattenRemoteSkimDict( skimlist , options.datasections ) )
         writeConfigDicts( scalesdict, playlistdict , lumi=options.lumi )
 
 ## Yield successive n-sized chunks from l. The last chunk may be smaller than n.
