@@ -26,8 +26,8 @@ datastreams = [
                "MET",
                "MuonEG",
                "SingleElectron",
-               "SingleMu",
-               #"SingleMuon",
+               #"SingleMu",
+               "SingleMuon",
                "SinglePhoton",
                "Tau",
                ]

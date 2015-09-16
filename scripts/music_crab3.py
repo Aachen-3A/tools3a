@@ -72,7 +72,7 @@ def main():
         sys.exit(1)
 
     # Check if the current commit is tagged or tag it otherwise
-    if not options.noTag or options.overrideTag != "noTag":
+    if not options.noTag or options.overrideTag == "noTag":
         try:
             gitTag = createTag( options )
             SampleFileInfoDict.update({'gitTag':gitTag})

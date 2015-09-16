@@ -258,10 +258,26 @@ def main():
             task = crabFunctions.CrabTask(sample)
             if "COMPLETE" == task.state and not args.noFinalize or args.addIncomplete:
                 finalizeSample( sample, dblink, args )
-            if args.rFailed and "FAILED" == task.state:# or "KILLED" == task.state:
-                cmd = 'crab resubmit --wait %s' %crab._prepareFoldername(sample)
-                p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
-                (out,err) = p.communicate()
+            if args.rFailed and ("FAILED" == task.state or "NOSTATE" == task.state):# or "KILLED" == task.state:
+                if task.failureReason is not None:
+                    if "The CRAB3 server backend could not resubmit your task because the Grid scheduler answered with an error." in task.failureReason:
+                        cmd = 'mv %s bak_%s' %(crab._prepareFoldername(sample),crab._prepareFoldername(sample))
+                        p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
+                        (out,err) = p.communicate()
+
+                        cmd = 'crab submit %s_cfg.py' %(crab._prepareFoldername(sample))
+                        p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
+                        (out,err) = p.communicate()
+                        print out,err
+                    else:
+                        cmd = 'crab resubmit --wait %s' %crab._prepareFoldername(sample)
+                        p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
+                        (out,err) = p.communicate()
+                else:
+                    cmd = 'crab resubmit --wait %s' %crab._prepareFoldername(sample)
+                    p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
+                    (out,err) = p.communicate()
+                task.update()
                 print out
             if  args.kIdle and "SUBMITTED" == task.state and task.nRunning < 1 and task.nIdle > 0 and task.nTransferring <1:
                 idlejobs = [id for id in task.jobs.keys() if "idle" in task.jobs[id]['State']]
