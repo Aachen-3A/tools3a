@@ -72,7 +72,7 @@ def main():
         sys.exit(1)
 
     # Check if the current commit is tagged or tag it otherwise
-    if not options.noTag or options.overrideTag == "noTag":
+    if options.noTag or options.overrideTag == "noTag":
         try:
             gitTag = createTag( options )
             SampleFileInfoDict.update({'gitTag':gitTag})
@@ -83,6 +83,7 @@ def main():
         SampleFileInfoDict.update( { 'gitTag':options.overrideTag } )
 
     log.info("after tag")
+    log.info("tag: "+SampleFileInfoDict['gitTag'])
     log.info(controller.checkusername())
 
     # first check if user has permission to write to selected site
