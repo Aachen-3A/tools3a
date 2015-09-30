@@ -11,6 +11,7 @@ import crabFunctions
 import gridFunctions
 import dbutilscms
 import aix3adb
+import cesubmit
 from  aix3adb import Aix3adbException
 # define some module-wide switches
 runOnMC = True
@@ -24,12 +25,15 @@ def commandline_parsing():
     parser.add_argument('-r' ,'--rFailed',    action='store_true', help='resubmit failed tasks')
     parser.add_argument('-i', '--kIdle',     action='store_true', help='Try to kill stuck idle jobs')
     parser.add_argument('-u', '--update',    action='store_true', help='Update latest skim instead of creating a new one. This sets the --ignoreComplete option true')
+    parser.add_argument('--noFiles',    action='store_true', help='Do not create file list for db entry')
+    parser.add_argument('--noCrab',    action='store_true', help='Do not perform crab status calls etc.')
     parser.add_argument('--ignoreComplete',  action='store_true', help='Do not skip previously finalized samples')
     parser.add_argument('--addIncomplete',  action='store_true', help='Submit all samples to db, even if they are not finished')
     parser.add_argument('--only', action='store', dest='folder_tag', default='', help='Only loop over folder containing a string')
     args = parser.parse_args()
 
     if args.update: args.ignoreComplete = True
+    if args.noCrab: args.noFiles = True
     return args
 
 def read_crabconfig( sample ):
@@ -67,35 +71,42 @@ def finalizeSample(sample,dblink, args):
     config = read_crabconfig( sample )
     outlfn = config.Data.outLFNDirBase.split('/store/user/')[1]
     if outlfn.endswith("/"): outlfn =outlfn[:-1]
-    crab = crabFunctions.CrabController()
-    # Check files for each job
-    dCacheFiles = gridFunctions.getdcachelist( outlfn )
-    #~ success , failed = crab.getlog( sample )
-    cmd = 'crab log %s' % crab._prepareFoldername(sample)
-    p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
-    (out,err) = p.communicate()
-    #~ print out
-    sample = sample.strip()
-    crabFolder = crab._prepareFoldername( sample )
-    #~ print crabFolder
-    #~ print "%s/%s/results/*.log.tar.gz" % (config.General.workArea,crabFolder)
-    logArchs = glob.glob("%s/%s/results/*.log.tar.gz" % (config.General.workArea,crabFolder))
-    #~ print logArchs
     finalFiles = []
     totalEvents = 0
-    #~ sys.exit()
-    #~ print dCacheFiles
-    for logArchName in logArchs:
-        JobNumber = logArchName.split("/")[-1].split("_")[1].split(".")[0]
-        #~ print logArchName
-        log = readLogArch( logArchName )
-        # check if file on dCache
-        dfile = []
-        for layer in dCacheFiles:
-            dfile += [s for s in layer if "%s_%s.pxlio" %( sample, JobNumber ) in s ]
-        if len(dfile)  > 0 and log['readEvents'] > 0 :
-            finalFiles.append(  {'path':dfile[0], 'nevents':log['readEvents']} )
-            totalEvents += log['readEvents']
+    print "before noFiles"
+    if not args.noFiles:
+        crab = crabFunctions.CrabController()
+        # Check files for each job
+        dCacheFiles = gridFunctions.getdcachelist( outlfn )
+        #~ success , failed = crab.getlog( sample )
+        cmd = 'crab log %s --voGroup=%s' % ( crab._prepareFoldername(sample), crab.voGroup )
+        # print cmd
+        # crab.callCrabCommand( ('log', crab._prepareFoldername(sample) ) ) 
+        p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
+        (out,err) = p.communicate()
+        #~ print out
+        sample = sample.strip()
+        crabFolder = crab._prepareFoldername( sample )
+        #~ print crabFolder
+        #~ print "%s/%s/results/*.log.tar.gz" % (config.General.workArea,crabFolder)
+        logArchs = glob.glob("%s/%s/results/*.log.tar.gz" % ( os.getcwd() ,crabFolder))
+        print "%s/%s/results/*.log.tar.gz" % (config.General.workArea,crabFolder)
+        print logArchs
+        #~ sys.exit()
+        #~ print dCacheFiles
+        print 'looping log archs'
+        for logArchName in logArchs:
+            JobNumber = logArchName.split("/")[-1].split("_")[1].split(".")[0]
+            #~ print logArchName
+            log = readLogArch( logArchName )
+            # check if file on dCache
+            dfile = []
+            for layer in dCacheFiles:
+                dfile += [s for s in layer if "%s_%s.pxlio" %( sample, JobNumber ) in s ]
+            if len(dfile)  > 0 and log['readEvents'] > 0 :
+                finalFiles.append(  {'path':dfile[0], 'nevents':log['readEvents']} )
+                totalEvents += log['readEvents']
+            print dfile[0], log['readEvents']
     global runOnMC
     global runOnData
     # find out if we work on dat or mc
@@ -117,7 +128,6 @@ def finalizeSample(sample,dblink, args):
         outfile.write("%s:%s\n" % (sample,  config.Data.inputDataset))
 
 def addData2db(sample, dblink, args, config, finalFiles, totalEvents):
-    crab = crabFunctions.CrabController()
     # try to get sample db entry and create it otherwise
     newInDB = False
     try:
@@ -150,7 +160,6 @@ def addData2db(sample, dblink, args, config, finalFiles, totalEvents):
         dblink.insertDataSkim( dbSkim )
 
 def addMC2db(sample, dblink, args, config, finalFiles, totalEvents):
-    crab = crabFunctions.CrabController()
     generators = {}
     generators.update({ 'MG':'madgraph' })
     generators.update({ 'PH':'powheg' })
@@ -206,8 +215,7 @@ def fillCommonSkimFields( dbSample, dbSkim , config, finalFiles, totalEvents ):
     # create relation to dbsample object
     dbSkim.sampleid = dbSample.id
     dbSkim.datasetpath = config.Data.inputDataset
-    crab = crabFunctions.CrabController()
-    dbSkim.owner = crab.checkusername()
+    dbSkim.owner = cesubmit.getCernUserName()
     dbSkim.iscreated = 1
     dbSkim.isfinished = 1
     dbSkim.isdeprecated  = 0
@@ -218,7 +226,10 @@ def fillCommonSkimFields( dbSample, dbSkim , config, finalFiles, totalEvents ):
     dbSkim.skimmer_name = "PxlSkimmer"
     outlfn = config.Data.outLFNDirBase.split('/store/user/')[1]
     dbSkim.skimmer_version = outlfn.split("/")[2]
-    dbSkim.skimmer_cmssw = os.getenv( 'CMSSW_VERSION' )
+    tempstrings = config.JobType.psetName.split('/')
+    for st in tempstrings:
+        if 'CMSSW_' in st:
+            dbSkim.skimmer_cmssw = st
     dbSkim.skimmer_globaltag = [p.replace("globalTag=","").strip() for p in config.JobType.pyCfgParams if "globalTag" in p][0]
     dbSkim.nevents = str(totalEvents)
 
@@ -235,11 +246,15 @@ def createDBlink():
 def main():
     args = commandline_parsing()
     crab = crabFunctions.CrabController()
-    #~ crabFolder = crab.crabFolders[0]
+    crabFolder = crab.crabFolders[0]
     crabSamples = [crabFolder.replace('crab_','') for crabFolder in crab.crabFolders]
     if args.folder_tag!='':
         crabSamples = filter(lambda x: args.folder_tag in x, crabSamples)
-    sample = crabSamples[0]
+    try:
+        sample = crabSamples[0]
+    except:
+        print "Found no sample in working directory"
+        sys.exit(1)
     dblink = createDBlink()
     skipped_final = []
     if not os.path.exists('finalSample'):
@@ -255,10 +270,11 @@ def main():
                 print '{:<90} {:<12} {:<8} {:<8} {:<8} {:<8} {:<8}'.format('Sample','State','Running','Idle','Failed','Transfer','Finished')
             i+=1
             #~ state,jobs = crab.status(sample)
-            task = crabFunctions.CrabTask(sample)
+            task = crabFunctions.CrabTask(sample, initUpdate = (not args.noCrab) )
+            print "Blub Blub"
             if "COMPLETE" == task.state and not args.noFinalize or args.addIncomplete:
                 finalizeSample( sample, dblink, args )
-            if args.rFailed and "FAILED" == task.state:# or "KILLED" == task.state:
+            if args.rFailed and "FAILED" == task.state and not args.noCrab:# or "KILLED" == task.state:
                 cmd = 'crab resubmit --wait %s' %crab._prepareFoldername(sample)
                 p = subprocess.Popen(cmd,stdout=subprocess.PIPE, shell=True)#,shell=True,universal_newlines=True)
                 (out,err) = p.communicate()
