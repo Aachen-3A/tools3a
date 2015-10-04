@@ -148,7 +148,7 @@ def statistics(taskList):
     """Draw statistics
     Draws a histogram of the time consumed by the finished jobs
     """
-    #rootplotlib.init()
+    rootplotlib.init()
     c1=ROOT.TCanvas("c1","",600,600)
     c1.UseCurrentStyle()
     totaltimes, runtimes, finished=[],[],[]
@@ -177,9 +177,9 @@ def statistics(taskList):
     except ValueError:
         return None
     bins=int(min(100,math.ceil(len(runtimes)/10)))
-    h1=ROOT.TH1F("h1","Run times",bins,lo,hi)
-    h2=ROOT.TH1F("h2","Total Times",bins,lo,hi)
-    h3=ROOT.TH1F("h3","finisched",bins,lo,hi)
+    h1=ROOT.TH1F("h1","",bins,lo,hi)
+    h2=ROOT.TH1F("h2","",bins,lo,hi)
+    h3=ROOT.TH1F("h3","",bins,lo,hi)
     h1.GetXaxis().SetTitle("#Delta t (min)")
     h1.GetYaxis().SetTitle("Number of jobs")
     h1.SetLineWidth(3)
