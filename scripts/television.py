@@ -21,6 +21,8 @@ import signal
 import ROOT
 import rootplotlib
 import math
+import gridmon
+
 waitingForExit = False
 
 
@@ -204,7 +206,7 @@ class Overview:
     Tasks and jobs overviews are stored persistantly in order to be aware of the selected task/job.
     Jobinfo is created on the fly.
     """
-    def __init__(self, stdscr, tasks, resubmitList, killList, nextTaskId):
+    def __init__(self, stdscr, tasks, resubmitList, killList, nextTaskId, nogridmon):
         self.level = 0
         self.taskId = 0
         self.cursor = 0
@@ -221,6 +223,7 @@ class Overview:
             self.taskOverviews.append(taskOverview)
         self.update(tasks, resubmitList, killList, nextTaskId)
         self.tasks = tasks
+        self.nogridmon = nogridmon
     def update(self, tasks, resubmitList, killList, nextTaskId):
         self.tasks = tasks
         self.overview.clear()
@@ -322,27 +325,36 @@ class Overview:
     def _refresh(self):
         if self.level==0:
             self.currentView = self.overview
+            self.currentView.refresh()
         elif self.level==1:
             self.currentView = self.taskOverviews[self.currentTask]
-        else:
-            pp = pprint.PrettyPrinter(indent=4)
-            x = curseshelpers.TabbedText(self.stdscr, top=10, height=self.height-2)
+            self.currentView.refresh()
+    def level2(self, passphrase):
+        pp = pprint.PrettyPrinter(indent=4)
+        x = curseshelpers.TabbedText(self.stdscr, top=10, height=self.height-2)
+        try:
+            x.addText("Status information",pp.pformat(self.tasks[self.currentTask].jobs[self.currentJob].infos))
+        except:
+            x.addText("Status information", "No information available")
+        if self.tasks[self.currentTask].jobs[self.currentJob].frontEndStatus=="RETRIEVED":
             try:
-                x.addText("Status information",pp.pformat(self.tasks[self.currentTask].jobs[self.currentJob].infos))
+                x.addFile("stdout",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"out.txt"))
             except:
-                x.addText("Status information", "No information available")
-            if self.tasks[self.currentTask].jobs[self.currentJob].frontEndStatus=="RETRIEVED":
-                try:
-                    x.addFile("stdout",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"out.txt"))
-                except:
-                    x.addText("stdout","could not find stdout"+ os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"out.txt"))
-                try:
-                    x.addFile("stderr",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"err.txt"))
-                except:
-                    x.addText("stderr","could not find stderr")
-            x.addFile("jdl file", os.path.join(self.tasks[self.currentTask].directory,self.tasks[self.currentTask].jobs[self.currentJob].jdlfilename))
-
-            self.currentView=x
+                x.addText("stdout","could not find stdout"+ os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"out.txt"))
+            try:
+                x.addFile("stderr",os.path.join(self.tasks[self.currentTask].directory, self.tasks[self.currentTask].jobs[self.currentJob].outputSubDirectory,"err.txt"))
+            except:
+                x.addText("stderr","could not find stderr")
+        elif not self.nogridmon and "rwth-aachen" in self.tasks[self.currentTask].ceId:
+            gm = gridmon.Gridmon(self.tasks[self.currentTask].jobs[self.currentJob].jid, passphrase)
+            x.addText("ps (gridmon)", gm.ps())
+            x.addText("workdir (gridmon)", gm.workdir())
+            x.addText("jobdir (gridmon)", gm.jobdir())
+            x.addText("stdout (gridmon)", gm.stdout())
+            x.addText("stderr (gridmon)", gm.stderr())
+            x.addText("top (gridmon)", gm.top())
+        x.addFile("jdl file", os.path.join(self.tasks[self.currentTask].directory,self.tasks[self.currentTask].jobs[self.currentJob].jdlfilename))
+        self.currentView=x
         self.currentView.refresh()
 
 def main(stdscr, options, args, passphrase):
@@ -390,12 +402,12 @@ def main(stdscr, options, args, passphrase):
     global waitingForExit
     waitingForUpdate = None
     nextTaskId=0
-    overview = Overview(stdscr, taskList, resubmitList, killList, nextTaskId)
+    overview = Overview(stdscr, taskList, resubmitList, killList, nextTaskId, options.nogridmon)
     # this is the pool for the update task.
     pool = None
     while True:
         # main loop
-        stdscr.addstr(1, 0, "Exit <q>  Raise/lower update interval <+>/<-> ("+str(updateInterval)+")  More information <return>  Update <space>  Statistics <s> ")
+        stdscr.addstr(1, 0, "Exit <q>  Back <BACKSPACE>  Raise/lower update interval <+>/<-> ("+str(updateInterval)+")  More information <return>  Update <space>  Statistics <s> ")
         stdscr.addstr(2, 0, "Resubmit by Status:  Aborted <1>, Done-Failed <2>, (Really-)Running <3>, None <4>, Done-Ok exit!=0 <5>")
         stdscr.addstr(3, 0, "Resubmit job/task <r> Resubmit all tasks <R>  Kill job/task <k> Kill all tasks <K> clear finished <cC>")
         stdscr.addstr(4, 0, "Next update {0}       ".format(timerepr(nextUpdate(lastUpdate, updateInterval, nextTaskId))))
@@ -508,6 +520,8 @@ def main(stdscr, options, args, passphrase):
             logger.info("info")
         elif c == 10:   #enter key
             overview.down()
+            if overview.level==2:
+                overview.level2(passphrase)
         else:
             pass
         if waitingForExit and waitingForUpdate is None:
@@ -520,6 +534,7 @@ if __name__ == "__main__":
     parser.add_option("--dump", action="store_true", dest="dump", help="Dump dictionary of task info", default=False)
     parser.add_option("--debug", action="store", dest="debug", help="Debug level (DEBUG, INFO, WARNING, ERROR, CRITICAL)", default="WARNING")
     parser.add_option("-p", "--proxy", action="store_true", dest="proxy", help="Do not ask for password and use current proxy", default=False)
+    parser.add_option("--nogridmon", action="store_true", dest="nogridmon", help="Disable live information from the grid-mon interface. This is automatically disabled when checking a non-RWTH job, when not providing a passphrase, and when CMSSW is not enabled.", default=False)
     (options, args) = parser.parse_args()
     if options.dump:
         for directory in args:
@@ -541,6 +556,8 @@ if __name__ == "__main__":
                 passphrase = None
             else:
                 cesubmit.renewVomsProxy(passphrase=passphrase)
+        if passphrase is None or os.environ.get("CMSSW_BASE") is None:
+            options.nogridmon = True
         curses.wrapper(main, options, args, passphrase)
         #curseshelpers.outputWrapper(main, 5, options, args, passphrase)
 
