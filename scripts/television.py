@@ -456,12 +456,11 @@ def main(stdscr, options, args, passphrase):
             updateInterval+=60
         elif c == ord('-'):
             updateInterval=max(0,updateInterval-60)
-        elif c == ord('q') or c == 27 or c == curses.KEY_BACKSPACE:
-            # q escape or backspace
+        elif c == curses.KEY_BACKSPACE:
             if overview.level:
                 overview.up()
-            else:
-                waitingForExit=True
+        elif c == ord('q'):
+            waitingForExit=True
         elif c == ord(' '):
             lastUpdate = datetime.datetime.now()-datetime.timedelta(seconds=2*updateInterval)
         elif c == curses.KEY_LEFT:
