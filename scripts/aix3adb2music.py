@@ -98,9 +98,13 @@ def getSkimAndSampleList(args):
 
     return outlist
 
-def flattenRemoteSkimDict( remoteDict ):
+
+# @param datasections a list of section which contain data samples
+def flattenRemoteSkimDict( remoteDict , datasections):
     remoteList = []
     for section in remoteDict.keys():
+        if section in datasections:
+            continue
         for ( skim, sample, arguments ) in remoteDict[section]:
             remoteList.append( (skim, sample) )
     return remoteList
