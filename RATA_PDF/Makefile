@@ -8,7 +8,7 @@
 PROGRAM       = hist_maker
 
 
-LHAPDF_PATH =$(LHAPDF_BASE)
+LHAPDF_PATH =$(LHAPDF)
 BOOST_PATH=/cvmfs/cms.cern.ch/slc6_amd64_gcc491/external/boost/1.57.0-jlbgio/
 
 #CMSSW_RELEASE_BASE_NOPATCH:=$(shell echo $(CMSSW_RELEASE_BASE) | sed -e 's/-patch//' -e 's/_patch.//')
