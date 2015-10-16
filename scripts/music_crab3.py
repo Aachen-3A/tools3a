@@ -260,7 +260,7 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
 
     #####This is a dirty hack to get the JEC
     #when the JEC is in the global tag remove this part!!!
-    files_to_copy=['Summer15_50nsV5_DATA.db', 'Summer15_50nsV5_MC.db']
+    files_to_copy=['Summer15_50nsV5_DATA.db', 'Summer15_50nsV5_MC.db', 'Summer15_25nsV5_DATA.db', 'Summer15_25nsV5_DATA_Uncertainty_AK4PF.txt', 'Summer15_25nsV5_DATA_Uncertainty_AK4PFchs.txt']
     for era in files_to_copy:
         shutil.copyfile(os.path.abspath(os.environ['CMSSW_BASE']+"/src/PxlSkimmer/Skimming/data/"+era), os.path.abspath("./"+era))
     config.set( 'JobType','inputFiles', files_to_copy)
