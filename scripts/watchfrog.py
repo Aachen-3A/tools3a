@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-from multiprocessing import Process, Condition, Lock  
-from multiprocessing.managers import BaseManager 
+from multiprocessing import Process, Condition, Lock
+from multiprocessing.managers import BaseManager
 import threading
 import os,glob,sys
 import optparse
@@ -13,9 +13,11 @@ import multiprocessing
 import Queue
 
 # custom modules
+import aix3adb
+from  aix3adb import Aix3adbException
 import curseshelpers
 # so far no additional command line parsing needed
-import gridFunctions 
+import gridFunctions
 
 # Command line parsing is added in commandline_parsing
 import crabFunctions
@@ -115,7 +117,7 @@ def runGui(stdscr , options, args):
     
     logText.clear()
     resubmitList = []
-    overview = Overview(stdscr, tasknameList , resubmitList, job_q ) 
+    overview = Overview(stdscr, tasknameList , resubmitList, job_q , options.dblink)
 
     logText._redraw()
     updateFlag = True
@@ -130,15 +132,20 @@ def runGui(stdscr , options, args):
             tasks = overview.tasks
             #filter tasks which are still updating
             tasks = filter(lambda task: not task.isUpdating, tasks)
+            # check if we can skip crab for finalized samples
+            [task.isFinal for task in tasks if "NOSTATE" in task.state]
             #filter tasks which are already marked as complete
-            tasks[:] = [task for task in tasks if not task.state == "COMPLETE"]
+            tasks[:] = [task for task in tasks if not task.state =="FINAL" ]
+
             optionsLock.acquire()
             for task in tasks:
                 mylogger.info("adding task %s with state %s updateTime %s to queue"% ( task.name , task.state, task.lastUpdate ))
                 #resubmit failed tasks
                 if "FAILED" in task.state:
                     task.state == "RESUBMIT"
-                else:    
+                elif "COMPLETED" in task.state:
+                    task.state = "FINALIZING"
+                else:
                     task.state = "UPDATING"
                 options.shared_job_q.put(( task.state , task))
                 time.sleep(0.1)
@@ -265,6 +272,9 @@ def crab_worker(job_q, result_q, log_q):
                 now = datetime.datetime.now()
                 mylogger.info('in worker rseubmit taks')
                 crabTask.resubmit_failed()
+            if "FINALIZING" in state:
+                if not crabTask.isFinal:
+                    crabTask.finalizeTask()
             else:
                 crabTask.update()
             mylogger.info('in worker updated Task %s now state %s '% (crabTask.name, crabTask.state ) )
@@ -297,7 +307,7 @@ def getAllCrabFolders(options):
 
 
 class Overview:
-    def __init__(self, stdscr, taskNameList, resubmitList, shared_job_q):
+    def __init__(self, stdscr, taskNameList, resubmitList, shared_job_q, dblink):
         self.level = 0
         self.taskId = 0
         self.cursor = 0
@@ -307,12 +317,11 @@ class Overview:
         self.tasks = []
         # can be deleted in cleanup ?
         for taskName in taskNameList:
-            self.tasks.append( crabFunctions.CrabTask( taskName, initUpdate = False) )
-        
+            self.tasks.append( crabFunctions.CrabTask( taskName, initUpdate = False, dblink= dblink) )
         self.height=stdscr.getmaxyx()[0]-16
         self.height=stdscr.getmaxyx()[0]-16
         self.tasktable = curseshelpers.SelectTable(stdscr, top=4, height=self.height, maxrows=50+len(self.tasks))
-        widths=[5, 100, 11, 11, 11, 11, 11, 11, 11, 11 , 11, 20]
+        widths=[5, 100, 13, 11, 11, 11, 11, 11, 11, 11 , 11, 20]
         self.tasktable.setColHeaders(["#","Task", "Status", "nJobs", "Unsubmitted", "Idle", "Run.","Cooloff","Fail.","Trans","Finished", "last Update"],widths)
         for task in self.tasks:
             #~ taskOverview = curseshelpers.SelectTable(stdscr, top=4, height=self.height, maxrows=100+task.nJobs)
@@ -361,9 +370,9 @@ class Overview:
         cells = ["", "TOTAL", "", self.taskStats.nTasks, self.taskStats.nUnsubmitted, self.taskStats.nIdle, self.taskStats.nRunning, self.taskStats.nCooloff,self.taskStats.nFailed, self.taskStats.nTransferring , self.taskStats.nFinished ]
         self.tasktable.setFooters(cells)
         self._refresh()
-    
+
     def getPrintmode(self,task):
-        if task.state in ["UPDATING"]:
+        if task.state in ["UPDATING", "FINALIZING"]:
             # blue
             printmode = curses.color_pair(4)
             #~ printmode = printmode | A_BLINK
@@ -375,6 +384,9 @@ class Overview:
                 # yellow
                 printmode = curses.color_pair(3)
         elif "COMPLETE" in task.state:
+            #green
+            printmode = curses.color_pair(2)
+        elif "FINAL" in task.state:
             #green
             printmode = curses.color_pair(2)
         elif "DONE" in task.state:
@@ -391,7 +403,14 @@ class Overview:
     
     def update_currentTask(self):
         if self.level == 0:
-            self.tasks[self.currentTask].state = "UPDATING"
+            if self.tasks[self.currentTask].state == "COMPLETED":
+                self.tasks[self.currentTask].state = "FINALIZING"
+            elif self.tasks[self.currentTask].state == "FINALIZING":
+                return
+            elif self.tasks[self.currentTask].state == "FINAL":
+                return
+            else:
+                self.tasks[self.currentTask].state = "UPDATING"
             self.shared_job_q.put_nowait( (self.tasks[self.currentTask].state
                                         ,self.tasks[self.currentTask]) )
     def resubmit_currentTask(self):
@@ -421,6 +440,16 @@ def addInfoHeader(stdscr, options):
     #~ self.stdscr.addstr(0, 0, ("{0:^"+str(self.stdscr.getmaxyx()[1])+"}").format(self.asciiFrog), curses.A_REVERSE)
     #~ self.stdscr.addstr(8, 0, "Exit: q  Raise/lower update interval: +/- ("+str(options.updateInterval)+"s)  Update:  <SPACE>")
     stdscr.addstr(1, 0, "Exit: q  Raise/lower update interval: +/- ("+str(options.updateInterval)+"s)  Update Task:  <SPACE> Update all: <u> Resubmit failed: <r>")
+
+def createDBlink():
+    # Create a database object.
+    dblink = aix3adb.aix3adb()
+    crab = crabFunctions.CrabController()
+    # Authorize to database.
+    #~ print( "Connecting to database: 'http://cern.ch/aix3adb'" )
+    dblink.authorize(username = crab.checkusername())
+    #~ log.info( 'Authorized to database.' )
+    return dblink
 
 def timerepr(deltat):
     """Return formatted time interval
@@ -470,13 +499,19 @@ def commandline_parsing():
     
     options.runServer = True
     # get pass before starting
-    
-    import getpass
-    passphrase = getpass.getpass('Please enter your GRID pass phrase:')
+
+    options.dblink = createDBlink()
     # check if user has valid proxy
-    import gridFunctions 
-    gridFunctions.checkAndRenewVomsProxy( passphrase = passphrase)
-   
+    import gridFunctions
+    import getpass
+    proxytime = gridFunctions.checkVomsProxy()
+    if not proxytime:
+        passphrase = getpass.getpass('Please enter your GRID pass phrase:')
+        gridFunctions.checkAndRenewVomsProxy( passphrase = passphrase)
+
+
+
+
     #get current user HNname
     if not options.user:
         options.user = parsingController.checkusername()
