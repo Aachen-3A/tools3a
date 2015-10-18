@@ -452,7 +452,7 @@ def readSampleFile(filename,options):
                     first_part = line
                     lumi_mask = None
                 try:
-                    (name,sample) = first_part.split( ':' )
+                    ( sample, datasetpath ) = first_part.split( ':' )
                 except:
                     log.error("could not parse line: '%s'"%(first_part))
                     sys.exit(1)
@@ -465,9 +465,9 @@ def readSampleFile(filename,options):
                         #~ continue
 
                 if runOnData:
-                    sampledict.update({name:(name,sample,lumi_mask,lumisPerJob)})
+                    sampledict.update({sample : ( sample, datasetpath, lumi_mask, lumisPerJob )})
                 else:
-                    sampledict.update({name:(name,sample)})
+                    sampledict.update({sample : ( sample, datasetpath )})
     # add sampledict to outdict
     outdict.update({'sampledict':sampledict})
     # overwrite pset if --config option is used
