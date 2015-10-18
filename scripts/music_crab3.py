@@ -384,7 +384,6 @@ def readSampleFile(filename,options):
     sampledict = {}
     afterConfig = False
     existing = [] #]getExistingProcesses()
-
     #check if only samples matching a certain pattern should be added
     if options.only:
     # 'PATTERNS' should be a comma separated list of strings.

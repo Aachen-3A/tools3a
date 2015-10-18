@@ -35,9 +35,9 @@ def runserver( options, args):
     options.shared_result_q = manager.get_result_q()
     options.shared_log_q = manager.get_log_q()
     optionsLock.release()
-    
+
     mp_crab_worker(options.shared_job_q , options.shared_result_q , max(options.nCores-1 , 1) )
-    
+
     time.sleep(2)
     serverLock.acquire()
     manager.shutdown()
@@ -47,22 +47,22 @@ def runserver( options, args):
 def main(  ):
     (options, args ) = commandline_parsing()
     #~ curseshelpers.outputWrapper(runGui, 5,options,args)
-    curses.wrapper(runGui, options, args)    
-    
+    curses.wrapper(runGui, options, args)
+
 def runGui(stdscr , options, args):
     class CrabManager( multiprocessing.managers.BaseManager ):
         pass
     job_q = multiprocessing.Queue()
     result_q = multiprocessing.Queue()
     log_q = multiprocessing.Queue()
-    
+
     #~ multiprocessing.freeze_support()
     CrabManager.register('Controller', crabFunctions.CrabController)
-    
+
     CrabManager.register('get_job_q', callable=lambda: job_q)
     CrabManager.register('get_result_q', callable=lambda: result_q)
-    CrabManager.register('get_log_q', callable=lambda: log_q)   
-    
+    CrabManager.register('get_log_q', callable=lambda: log_q)
+
     manager = CrabManager(address=('', 5001), authkey='blabliblub')
     manager.start()
     optionsLock.acquire()
@@ -70,51 +70,51 @@ def runGui(stdscr , options, args):
     options.shared_result_q = manager.get_result_q()
     options.shared_log_q = manager.get_log_q()
     optionsLock.release()
-    
+
     ch =logging.FileHandler('frog.log', mode='a', encoding=None, delay=False)
     ch.setLevel(logging.INFO)
-    
+
     mylogger.addHandler(ch)
     #~ mylogger.setLevel(logging.DEBUG)
     mylogger.setLevel(logging.INFO)
-    
+
     crabController = manager.Controller( )
-    
+
     crabWorkers = mp_crab_worker(options.shared_job_q , options.shared_result_q , options.shared_log_q ,max(options.nCores-1 , 1) )
-    
-    # curses color pairs 
+
+    # curses color pairs
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_BLACK)
     curses.init_pair(5, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
-    
+
     # setting up curses
     curses.noecho()
     stdscr.keypad(1)
-    
+
     curses.curs_set(0)
     stdscr.refresh()
     logText = curseshelpers.BottomText(stdscr,top=40)
     # handler without multiprocessing layer
     #ch = curseshelpers.CursesHandler(stdscr,logText)
     #~ ch = curseshelpers.CursesMultiHandler( stdscr, logText, options.shared_log_q )
-    
-    
+
+
     stdscr.timeout(1000)
     curses.curs_set(0)
-    
+
     waitingForExit =  False
     count = 0
-    
+
     lastUpdate=datetime.datetime.now()
-    
+
     # get all needed tasks
     crabFolderList = getAllCrabFolders(options)
     tasknameList = []
     for folder in crabFolderList:
         tasknameList.append( folder.replace("crab_","") )
-    
+
     logText.clear()
     resubmitList = []
     overview = Overview(stdscr, tasknameList , resubmitList, job_q , options.dblink)
@@ -140,6 +140,7 @@ def runGui(stdscr , options, args):
             optionsLock.acquire()
             for task in tasks:
                 mylogger.info("adding task %s with state %s updateTime %s to queue"% ( task.name , task.state, task.lastUpdate ))
+
                 #resubmit failed tasks
                 if "FAILED" in task.state:
                     task.state == "RESUBMIT"
@@ -152,7 +153,7 @@ def runGui(stdscr , options, args):
             optionsLock.release()
             updateFlag = False
             lastUpdate = datetime.datetime.now()
-            
+
         overview.update()
         try:
             #~ finishedTask = options.shared_result_q.get()
@@ -162,10 +163,10 @@ def runGui(stdscr , options, args):
             overview.tasks[:] = [task for task in overview.tasks if not finishedTask.uuid == task.uuid]
             mylogger.info("Appending Task %s with update time %s"% ( finishedTask.name, finishedTask.lastUpdate ) )
             overview.tasks.insert(finishedTask.taskId, finishedTask)
-            
+
         except Queue.Empty:
             pass
-                        
+
         stdscr.refresh()
         logText.refresh()
         addInfoHeader(stdscr, options)
@@ -201,20 +202,20 @@ def runGui(stdscr , options, args):
         elif c == curses.KEY_HOME:
             overview.currentView.home()
         elif c == curses.KEY_END:
-            overview.currentView.end()   
+            overview.currentView.end()
         elif c == 10:   #enter key
             overview.down()
         time.sleep(0.01)
     # free shell from curses
     curses.nocbreak(); stdscr.keypad(0); curses.echo()
     curses.endwin()
-    
+
     for p in crabWorkers:
         p.join()
-    
+
     time.sleep(2)
     manager.shutdown()
-    
+
 def printFrogArt():
     return "              _     __        __    _       _      __                      _                \n"\
            "  __   ___.--'_`.   \ \      / /_ _| |_ ___| |__  / _|_ __ ___   __ _    .'_`--.___   __    \n"\
@@ -224,7 +225,7 @@ def printFrogArt():
            " \_`-'`---'\\__,                                                 |___/    ,__//`---'`-'_/   \n"\
            "  \`        `-\                                                            /-'        '/    \n"\
            "   `                                                                                 '      \n"\
-           " Upquark                       ... setting up the watchfrog ...               DownQuark     \n"             
+           " Upquark                       ... setting up the watchfrog ...               DownQuark     \n"
 
 
 def mp_crab_worker(shared_job_q, shared_result_q, shared_log_q, nprocs):
@@ -294,7 +295,7 @@ def getAllCrabFolders(options):
         filteredFolders = []
         # loop over all user specified patterns
         for pattern in options.only:
-            #loop over all crabFolders in working directory and 
+            #loop over all crabFolders in working directory and
             # them to filteredFolder list if they match the pattern
             for crabFolder in crabFolders:
                 if fnmatch.fnmatchcase( crabFolder, pattern ):
@@ -331,15 +332,15 @@ class Overview:
             taskOverview.setColHeaders(["#","JobID", "State", "Retries", "Restarts", "Sites","SubmitTime" , "StartTime","EndTime"], widths)
         self.taskStats = crabFunctions.TaskStats(self.tasks)
         self.currentView = self.tasktable
-        
-    
+
+
         self.update()
     def __del__(self):
         serverLock.release()
-    
+
     def update(self):
         self.tasktable.clear()
-        
+
         for (taskId, taskOverview, task) in zip(range(len(self.tasks)), self.taskOverviews, self.tasks):
             printmode = self.getPrintmode(task)
             task.taskId = taskId
@@ -358,7 +359,7 @@ class Overview:
                     taskOverview.addRow( [jobkey,
                                           job['JobIds'][-1],
                                           job['State'],
-                                          job['Retries'], 
+                                          job['Retries'],
                                           job['Restarts'],
                                           ' '.join(job['SiteHistory']),
                                           formatedUnixTimestamp(job['SubmitTimes'][-1]),
@@ -396,11 +397,11 @@ class Overview:
             # red
             printmode = curses.color_pair(1)
         return printmode
-        
+
     @property
     def currentTask(self):
         return self.tasktable.cursor
-    
+
     def update_currentTask(self):
         if self.level == 0:
             if self.tasks[self.currentTask].state == "COMPLETED":
@@ -421,7 +422,7 @@ class Overview:
     def down(self):
         self.stdscr.clear()
         self.level=min(self.level+1,2)
-        self._refresh()    
+        self._refresh()
     def up(self):
         self.stdscr.clear()
         self.level=max(self.level-1,0)
@@ -462,11 +463,11 @@ def timerepr(deltat):
     if hours: return "in {0}h {1}m {2}s".format(hours, minutes, seconds)
     if minutes: return "in {0}m {1}s".format(minutes, seconds)
     return "in {0}s".format(seconds)
-    
-def formatedUnixTimestamp (unixTimeStamp):
-    return datetime.datetime.fromtimestamp( int(unixTimeStamp) ).strftime('%Y-%m-%d %H:%M:%S')  
 
-                     
+def formatedUnixTimestamp (unixTimeStamp):
+    return datetime.datetime.fromtimestamp( int(unixTimeStamp) ).strftime('%Y-%m-%d %H:%M:%S')
+
+
 def commandline_parsing():
     parser = optparse.OptionParser( description='Watchfrog helps you to care for your jobs',  usage='usage: %prog [options]' )
     parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
@@ -475,12 +476,12 @@ def commandline_parsing():
                             'E.g. --only QCD* ). [default: %default]' )
     parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
     parser.add_option( '--workingArea',metavar='DIR',help='The area (full or relative path) where the CRAB project directories are saved. ' \
-                     'Defaults to the current working directory.'       )  
+                     'Defaults to the current working directory.'       )
     parser.add_option( '--updateInterval', default=600,help='Time between two updates for crab tasks in seconds.')
     parser.add_option( '--nCores', default=multiprocessing.cpu_count(),help='Number of cores to use [default: %default]')
 
 
-    
+
     #~ parsingController = crabFunctions.CrabController(logger = mylogger)
     parsingController = crabFunctions.CrabController()
     # we need to add the parser options from other modules
@@ -490,13 +491,13 @@ def commandline_parsing():
     (options, args ) = parser.parse_args()
     now = datetime.datetime.now()
     isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
-    options.isodatetime = isodatetime    
+    options.isodatetime = isodatetime
 
     if options.workingArea:
         options.workingArea = os.path.abspath(options.workingArea)
     else:
         options.workingArea = os.path.abspath(os.getcwd())
-    
+
     options.runServer = True
     # get pass before starting
 
@@ -515,15 +516,15 @@ def commandline_parsing():
     #get current user HNname
     if not options.user:
         options.user = parsingController.checkusername()
-    
+
     return (options, args )
 
 if __name__ == '__main__':
     # get command line arguments
-    
+
     #~ runserver( options, args )
     #~ main( options, args )
     main(  )
-    
-    
-    
+
+
+
