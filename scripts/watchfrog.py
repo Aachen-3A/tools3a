@@ -45,6 +45,7 @@ def runserver( options, args):
 
 #~ def main( options , args):
 def main(  ):
+    print printFrogArt()
     (options, args ) = commandline_parsing()
     #~ curseshelpers.outputWrapper(runGui, 5,options,args)
     curses.wrapper(runGui, options, args)
