@@ -93,8 +93,8 @@ def main():
         i+=1
         #~ state,jobs = crab.status(sample)
 
-        if "COMPLETE" == task.state and not args.noFinalize or args.addIncomplete:
-            if sample in finalSampleList or args.update: task.finalizeTask( update = args.update )
+        if ("COMPLETE" == task.state and not args.noFinalize) or ("FINAL" == task.state and args.update) or args.addIncomplete:
+            if sample not in finalSampleList or args.update: task.finalizeTask( update = args.update )
             if task.isFinal: finalizeSamples.append( task )
             #~ finalizeSample( sample, dblink, crabConfig, args )
         if args.rFailed and "FAILED" == task.state:# or "KILLED" == task.state:
