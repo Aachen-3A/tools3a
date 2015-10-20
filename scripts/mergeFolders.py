@@ -42,7 +42,10 @@ def main():
     extractRootFiles(options)
     megeRootFiles(options)
     alljdls=glob.glob(options.inputFolder+"/*/job*.jdl")
-    shutil.copyfile(alljdls[0], os.path.join(options.inputFolder,"example.jdl"))
+    try:
+        shutil.copyfile(alljdls[0], os.path.join(options.inputFolder,"example.jdl"))
+    except:
+        pass
     if options.clean:
         cleanUp(options)
 
