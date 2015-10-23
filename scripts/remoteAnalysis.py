@@ -168,6 +168,7 @@ def makeTask(options, skim, sample, section, arguments):
                             options.maxeventsoption,
                             options.skipeventsoption,
                             options.test)
+    runfiles = prepareFileList(skim, sample, options)
     print "Number of jobs: ", len(jobchunks)
     for chunk in jobchunks:
         job=cesubmit.Job()
