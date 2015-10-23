@@ -182,9 +182,14 @@ def makeTask(options, skim, sample, section, arguments):
     task.inputfiles.extend( expandFiles("", options.inputfiles ) )
     task.addGridPack( options.remotegridtarfile )
     for gridoutputfile in options.gridoutputfiles:
-        task.copyResultsToDCache( gridoutputfile )
+        task.copyResultsToDCache( options.gridoutputfile )
+    jobchunks=getJobChunks( skim.files,
+                            options.eventsperjob,
+                            options.filesperjob,
+                            options.maxeventsoption,
+                            options.skipeventsoption,
+                            options.test)
     runfiles = prepareFileList(skim, sample, options)
-    jobchunks=getJobChunks( runfiles, options )
     print "Number of jobs: ", len(jobchunks)
     for chunk in jobchunks:
         job=cesubmit.Job()
