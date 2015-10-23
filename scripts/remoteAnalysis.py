@@ -78,6 +78,15 @@ def readConfig(options,args):
     try:
         options.lumi = int( config.get('DEFAULT', 'lumi') )
     except:pass
+
+    try:
+        options.gridoutputfiles = options.gridoutputfiles.split(" ")
+    except:
+        print "error splitting gridoutputfiles"
+    try:
+        options.datasections = options.datasections.split(" ")
+    except:
+        print "error splitting datasections"
     sectionlist = {}
     for section in config.sections():
         if section in ["DEFAULT"]: continue
