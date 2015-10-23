@@ -164,7 +164,7 @@ def runGui(stdscr , options, args):
             overview.tasks[:] = [task for task in overview.tasks if not finishedTask.uuid == task.uuid]
             mylogger.info("Appending Task %s with update time %s"% ( finishedTask.name, finishedTask.lastUpdate ) )
             overview.tasks.insert(finishedTask.taskId, finishedTask)
-
+            overview.taskStats = crabFunctions.TaskStats( overview.tasks )
         except Queue.Empty:
             pass
 
@@ -369,7 +369,7 @@ class Overview:
                 except:
                     pass
         self.tasktable.refresh()
-        cells = ["", "TOTAL", "", self.taskStats.nTasks, self.taskStats.nUnsubmitted, self.taskStats.nIdle, self.taskStats.nRunning, self.taskStats.nCooloff,self.taskStats.nFailed, self.taskStats.nTransferring , self.taskStats.nFinished ]
+        cells = [self.taskStats.nTasks, "Tasks total", "Job Stats" , sum(len(t.jobs) for t in self.tasks ) , self.taskStats.nUnsubmitted, self.taskStats.nIdle, self.taskStats.nRunning, self.taskStats.nCooloff,self.taskStats.nFailed, self.taskStats.nTransferring , self.taskStats.nFinished ]
         self.tasktable.setFooters(cells)
         self._refresh()
 
