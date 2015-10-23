@@ -211,9 +211,12 @@ def runGui(stdscr , options, args):
     curses.nocbreak(); stdscr.keypad(0); curses.echo()
     curses.endwin()
 
+    del overview
     for p in crabWorkers:
-        p.join()
-
+        try:
+            p.terminate()
+        except:
+            p.terminate()
     time.sleep(2)
     manager.shutdown()
 
