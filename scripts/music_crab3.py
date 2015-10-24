@@ -260,7 +260,7 @@ def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
 
     #####This is a dirty hack to get the JEC
     #when the JEC is in the global tag remove this part!!!
-    files_to_copy=['Summer15_50nsV5_DATA.db', 'Summer15_50nsV5_MC.db']
+    files_to_copy=['Summer15_50nsV5_DATA.db', 'Summer15_50nsV5_MC.db', 'Summer15_25nsV5_DATA.db', 'Summer15_25nsV5_DATA_Uncertainty_AK4PF.txt', 'Summer15_25nsV5_DATA_Uncertainty_AK4PFchs.txt']
     for era in files_to_copy:
         shutil.copyfile(os.path.abspath(os.environ['CMSSW_BASE']+"/src/PxlSkimmer/Skimming/data/"+era), os.path.abspath("./"+era))
     config.set( 'JobType','inputFiles', files_to_copy)
@@ -384,7 +384,6 @@ def readSampleFile(filename,options):
     sampledict = {}
     afterConfig = False
     existing = [] #]getExistingProcesses()
-
     #check if only samples matching a certain pattern should be added
     if options.only:
     # 'PATTERNS' should be a comma separated list of strings.
@@ -452,7 +451,7 @@ def readSampleFile(filename,options):
                     first_part = line
                     lumi_mask = None
                 try:
-                    (name,sample) = first_part.split( ':' )
+                    ( sample, datasetpath ) = first_part.split( ':' )
                 except:
                     log.error("could not parse line: '%s'"%(first_part))
                     sys.exit(1)
@@ -465,9 +464,9 @@ def readSampleFile(filename,options):
                         #~ continue
 
                 if runOnData:
-                    sampledict.update({name:(name,sample,lumi_mask,lumisPerJob)})
+                    sampledict.update({sample : ( sample, datasetpath, lumi_mask, lumisPerJob )})
                 else:
-                    sampledict.update({name:(name,sample)})
+                    sampledict.update({sample : ( sample, datasetpath )})
     # add sampledict to outdict
     outdict.update({'sampledict':sampledict})
     # overwrite pset if --config option is used

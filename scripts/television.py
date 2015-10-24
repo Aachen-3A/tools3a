@@ -148,7 +148,7 @@ def statistics(taskList):
     """Draw statistics
     Draws a histogram of the time consumed by the finished jobs
     """
-    rootplotlib.init()
+    #rootplotlib.init()
     c1=ROOT.TCanvas("c1","",600,600)
     c1.UseCurrentStyle()
     totaltimes, runtimes, finished=[],[],[]
@@ -508,10 +508,10 @@ def main(stdscr, options, args, passphrase):
             overview.update(taskList, resubmitList, killList, nextTaskId)
         elif c==ord('c'):
             clearFinishedJobs(taskList)
-            overview = Overview(stdscr, taskList, resubmitList, killList, 0)
+            overview = Overview(stdscr, taskList, resubmitList, killList, 0, options.nogridmon)
         elif c==ord('C'):
             clearFinishedJobs(taskList)
-            overview = Overview(stdscr, taskList, resubmitList, killList, 0)
+            overview = Overview(stdscr, taskList, resubmitList, killList, 0, options.nogridmon)
         elif c==ord('s'):
             dummy = statistics(taskList)
         elif c==ord('t'):

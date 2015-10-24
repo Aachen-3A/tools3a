@@ -189,10 +189,13 @@ def abbrDatasetName( datasetName ):
              '.7TeV',
              #~ '13TeV',
              'DR74',
+             '-74X_mcRun2',
+             'MiniAODv2',
              '25ns',
              'RunIISpring15',
              'Fall11',
-             '.Asympt',
+             '.asymptotic_v.',
+             
              'Summer12_DR53X',
              'Summer12',
              #~ '.Spring15',
@@ -223,6 +226,7 @@ def abbrDatasetName( datasetName ):
              '.photos',
              '.2MuEtaFilter',
              '.2MuPEtaFilter',
+             '.v1'
              ]
 
     for tag in tags:

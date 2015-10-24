@@ -78,6 +78,24 @@ def readConfig(options,args):
     try:
         options.lumi = int( config.get('DEFAULT', 'lumi') )
     except:pass
+
+    try:
+        options.gridoutputfiles = options.gridoutputfiles.split(" ")
+    except:
+        print "error splitting gridoutputfiles"
+    try:
+        options.datasections = options.datasections.split(" ")
+    except:
+        print "error splitting datasections"
+    # parse some infos to other types
+    try:
+
+        options.eventsperjob = int(options.eventsperjob)
+    except:
+        try:
+            options.filesperjob = int(options.filesperjob)
+        except:
+            print "Error converting some files / rvents per job to int"
     sectionlist = {}
     for section in config.sections():
         if section in ["DEFAULT"]: continue
@@ -161,13 +179,9 @@ def makeTask(options, skim, sample, section, arguments):
     task.inputfiles.extend( expandFiles("", options.inputfiles ) )
     task.addGridPack( options.remotegridtarfile )
     for gridoutputfile in options.gridoutputfiles:
-        task.copyResultsToDCache( options.gridoutputfile )
-    jobchunks=getJobChunks( skim.files,
-                            options.eventsperjob,
-                            options.filesperjob,
-                            options.maxeventsoption,
-                            options.skipeventsoption,
-                            options.test)
+        task.copyResultsToDCache( gridoutputfile )
+    runfiles = prepareFileList(skim, sample, options)
+    jobchunks=getJobChunks( runfiles, options )
     print "Number of jobs: ", len(jobchunks)
     for chunk in jobchunks:
         job=cesubmit.Job()

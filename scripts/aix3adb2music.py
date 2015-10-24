@@ -98,12 +98,33 @@ def getSkimAndSampleList(args):
 
     return outlist
 
-def flattenRemoteSkimDict( remoteDict ):
+
+# @param datasections a list of section which contain data samples
+def flattenRemoteSkimDict( remoteDict , datasections):
     remoteList = []
     for section in remoteDict.keys():
+        if section in datasections:
+            continue
         for ( skim, sample, arguments ) in remoteDict[section]:
             remoteList.append( (skim, sample) )
     return remoteList
+
+## Workaround until ProcessGroup is implemented
+#
+# match process name by tags to a Group
+def getProcessGroup( processname ):
+
+    # ugly hadcoded map
+    GroupMap = {}
+    GroupMap.update( { "DY" : "DrellYan" } )
+    GroupMap.update( { "Drell-Yan" : "DrellYan" } )
+    GroupMap.update( { "TT" : "TTbar" } )
+    GroupMap.update( { "TTbar" : "TTbar" } )
+    GroupMap.update( { "WJets" : "W" } )
+    GroupMap.update( { "WTo" : "W" } )
+    for key in GroupMap:
+        if key in processname: return GroupMap[ key ]
+    return processname
 
 def getConfigDicts( skimlist ):
     playlistdict = {}
@@ -127,7 +148,9 @@ def getConfigDicts( skimlist ):
         else:
             scalesdict[ dbSample.generator ].append( dbSample.name + '.' + 'FilterEff = 1'  )
         scalesdict[ dbSample.generator ].append( dbSample.name + '.' + 'kFactor = ' + dbSample.kfactor )
-        scalesdict[ dbSample.generator ].append( dbSample.name + '.' + 'ErrorMapping = ' + 'LO.CrosssectionError\n' )
+        #~ scalesdict[ dbSample.generator ].append( ".".join( [ dbSample.name '.XSecOrder = '] ) + ".".join( [getProcessGroup( sample.name ), sample.crosssection_order ] ) )
+        scalesdict[ dbSample.generator ].append( dbSample.name + '.XSecOrder = ' + dbSample.crosssection_order  )
+        scalesdict[ dbSample.generator ].append( dbSample.name + '.ProcessGroup = ' + getProcessGroup( dbSample.name ) )
         #~ print dbSkim.files
 
     return scalesdict, playlistdict
