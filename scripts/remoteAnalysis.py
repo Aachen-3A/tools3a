@@ -217,6 +217,28 @@ def ask(question):
         elif answer in "nN":
             return False
 
+## This function prepares a list of pxlio files depending on the chosen options
+#
+# @param A aix3adb skim object
+# @param Program wide options saved in Option class from optparse
+# @return A list of dicts as used in the skim.files field
+def prepareFileList(skim, sample, options):
+
+    if not options.useListFiles:
+        return skim.files
+
+    if options.outLFNDirBase is not None:
+        outlfn = os.path.join( options.outLFNDirBase, sample.name )
+    else:
+        outlfn = os.path.join( skim.owner, 'PxlSkim', skim.skimmer_version, sample.name )
+    print "use outlfn %s" % outlfn
+    dCacheFiles = []
+    for flist in gridFunctions.getdcachelist( outlfn ) :
+        dCacheFiles += flist
+    #format to correct list format as used by skim objects
+    dCacheFiles = [ {'path': dfile, 'nevents':-1} for dfile in dCacheFiles]
+    return dCacheFiles
+
 ## Check a grid pack and asks if it should be updated
 #
 # Two checks are performed. (1) the timestamp of all files that should enter the grid pack
