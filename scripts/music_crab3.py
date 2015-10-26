@@ -95,18 +95,35 @@ def main():
     SampleFileInfoDict.update({'globalTag':globalTag})
 
     # create a connection to aix3adb if necessary
-    if options.db:
-        dblink = createDBlink(options)
-    else:
-        dblink = None
+    #~ if options.db:
+    dblink = createDBlink(options)
+    #~ else:
+        #~ dblink = None
 
     # create variables for job submission stats
+    tasks = []
     tasks_submitted = []
     tasks_existing = []
+    tasks_noSubmit = []
     tasks_successful = []
 
     # create crab config files and submit tasks
     for key in SampleDict.keys():
+        # initalize crabTaks frob crabFunctions lib
+        if runOnData:
+            (name,sample,lumi_mask,lumisPerJob) = SampleDict[key]
+            json_file = lumi_mask
+        else:
+            json_file = None
+        task = CrabTask( key , initUpdate = True,
+                dblink= dblink,
+                globalTag = globalTag,
+                skimmer_version = gitTag,
+                json_file = json_file )
+        if task.inDB and not options.force:
+            tasks_existing.append( task )
+            continue
+
         CrabConfig = createCrabConfig(SampleFileInfoDict,SampleDict[key],options)
         log.info("Created crab config object")
         try:
@@ -115,10 +132,7 @@ def main():
             log.error( "I/O error({0}): {1}".format(e.errno, e.strerror) )
             continue
 
-
-        # sampleInDB returns false if notInDB option is used to submit sample
-        # which are not in aix3adb yet
-        if not options.resubmit and sampleInDB( options, dblink, key):
+        if not options.resubmit :
             #check if crab folder exists
             if not os.path.isdir( "crab_" + key ):
                 try:
@@ -128,64 +142,44 @@ def main():
                     controller.submit( configFileName )
                 if runOnMC:
                     submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
-                tasks_submitted.append( ( key, time.time() ) )
+                tasks_submitted.append( ( task, time.time() ) )
             # Delete folder and submit if --force option is used
             elif options.force:
                 shutil.rmtree( "crab_" + key )
                 controller.submit( configFileName )
                 if runOnMC:
                     submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
-                tasks_submitted.append( ( key, time.time() ) )
+                tasks_submitted.append( ( task, time.time() ) )
             else:
                 log.warning('Existing CRAB folder for tasks: %s not '\
                             'found (use force to submit anyway)' % key)
-                if runOnMC:
-                    submitSample2db_dump_csv( key,"fail", SampleDict[ key ][1], SampleFileInfoDict, options )
-                tasks_existing.append( ( key, 'EXISTING' ) )
+                #~ if runOnMC:
+                    #~ submitSample2db_dump_csv( key,"fail", SampleDict[ key ][1], SampleFileInfoDict, options )
+                #~ tasks_existing.append( ( task, 'EXISTING' ) )
         if options.resubmit:
             controller.resubmit( configFileName )
-            tasks_submitted.append( ( key, time.time() ) )
+            tasks_submitted.append( ( task, time.time() ) )
             submitSample2db_dump_csv( key,"success", SampleDict[ key ][1], SampleFileInfoDict, options )
 
-    #~ # check if submission was successful and add to aix3adb if --db option used
-    #~ for taskTuple in tasks_submitted:
-        #~ samplename = taskTuple[ 0 ]
-        #~ timeDelta = time.time() - taskTuple[ 1 ]
-        #~ # give crab3 server some time to create jobs
-        #~ log.info( "Give crab3 30 seconds for job submission %d left" % int(timeDelta) )
-        #~ while timeDelta < 30:
-            #~ time.sleep(2)
-            #~ timeDelta = time.time() - taskTuple[ 1 ]
-#~
-        #~ # check if sample was successfuly submitted res['status'], res['jobs']
-        #~ taskStatus, Jobs = controller.status( samplename )
-        #~ if taskStatus in ( 'QUEUED', 'SUBMITTED', 'FINISHED'):
-            #~ tasks_successful.append( samplename )
-            #~ # submit sample to aix3adb
-            #~ if options.db and not options.dry_run:
-            #~ #if options.db:
-                #~ submitSample2db(key, SampleDict[ key ][1], SampleFileInfoDict,options,dblink)
-                #~ submitSample2db_dump_csv( samplename,"success", SampleDict[ samplename ][1], SampleFileInfoDict, options )
-            #~ else:
-                #~ log.warning('No -db option or dry run, no sample information is submitted to aix3adb')
-                #~ submitSample2db_dump_csv( samplename,"success", SampleDict[ samplename ][1], SampleFileInfoDict, options )
-        #~ else:
-            #~ submitSample2db_dump_csv( samplename,"fail", SampleDict[ samplename ][1], SampleFileInfoDict, options )
+    # inform about existing skims
+    log.info( "some samples are skipped due to existing skims" )
+    for task in tasks_existing:
+        log.info( '{:<12} {:<90} '.format( task.dbSkim.owner, task.name ) )
 
-    # print some global stats for submission
-    if len( tasks_existing ) > 0:
-        log.warning( " Some samples were not submitted because a crab folder already existed" )
-        log.warning( " Use the --force option to submit anyway" )
-        log.warning( " List of existing samples" )
-        [ log.warning( task ) for task in tasks_existing ]
+    log.info( "Submitted samples (entered to db)" )
+    # check if submission was successful and add to aix3adb if --db option used
+    for taskTuple in tasks_submitted:
+        task = taskTuple[ 0 ]
+        timeDelta = time.time() - taskTuple[ 1 ]
+        # give crab3 server some time to create jobs
+        log.info( "Give crab3 30 seconds for job submission %d left" % int(timeDelta) )
+        while timeDelta < 30:
+            time.sleep(2)
+            timeDelta = time.time() - taskTuple[ 1 ]
+        task.update( )
+        log.info( '{:<12} {:<90} '.format( task.dbSkim.state, task.name ) )
 
-    if ( len( tasks_submitted ) - len( tasks_successful ) ) < 1:
-        log.info( "All samples submitted successfuly" )
-    else:
-        log.info( "Submission successful for %.0f%% of all samples" %
-                ( 1. * len(tasks_successful ) / len(tasks_submitted)) )
-        log.warning( "Submission failed for some samples:" )
-        [ log.warning( task ) for task in tasks_successful ]
+
 
 def createCrabConfig(SampleFileInfoDict, sampleinfo,options):
     global runOnMC
