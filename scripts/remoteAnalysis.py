@@ -38,6 +38,8 @@ def main():
     groupPrepare.add_option("--prepareConfigs", default = 'None',
                             choices=['None','MUSiC'],
                             help="Create config Files on the fly for given config style")
+    groupPrepare.add_option("--useListFiles", action = "store_true", default=False,
+                            help="Do not use fileslist from aix3adb but check on dCache instead")
     #groupPrepare.add_option("--local", action="store_true", help="Run the tasks on local computer.", default=False)
     #groupPrepare.add_option("--testlocal", action="store_true", help="Run only one task with one small job locally.", default=False)
     groupPrepare.add_option("-s", "--skipcheck", action="store_true", help="Skip check if grid pack is outdated.", default=False)
