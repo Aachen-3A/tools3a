@@ -511,13 +511,17 @@ def getGlobalTag(options):
     elif someCondition:
         log.info("this is a place where Global tags will be defined during the run")
     else:
-        #find default globalTag
-        from Configuration.AlCa.autoCond import autoCond
-        if runOnData:
-            #~ globalTag = cms.string( autoCond[ 'com10' ] )
-            globalTag =  autoCond[ 'com10' ]
+        if options.DefaultGlobalTag:
+            #find default globalTag
+            from Configuration.AlCa.autoCond import autoCond
+            if runOnData:
+                #~ globalTag = cms.string( autoCond[ 'com10' ] )
+                globalTag =  autoCond[ 'com10' ]
+            else:
+                globalTag = autoCond[ 'startup' ]
         else:
-            globalTag = autoCond[ 'startup' ]
+            log.info( "Global tag not specified, aborting! Specify global tag or run with --DefaultGlobalTag. " )
+            quit()
     return globalTag
 
 def createDBlink(options):
@@ -804,6 +808,7 @@ def commandline_parsing( parsingController ):
     # new feature alternative username
     music_crabOpts.add_option( '-u', '--user', metavar='USERNAME', help='Alternative username [default: HN-username]' )
     music_crabOpts.add_option( '-g','--globalTag', help='Override globalTag from pset')
+    music_crabOpts.add_option( '--DefaultGlobalTag', action='store_true', default=False, help='Allow submission without stating globalTag (use default)')
     music_crabOpts.add_option( '--resubmit',action='store_true', default=False, help='Try to resubmit jobs instead of submit')
     music_crabOpts.add_option( '--force',action='store_true', default=False, help='Delete existing crab folder and resubmit tasks')
     music_crabOpts.add_option( '--notInDB',action='store_true', default=False, help='Only submit samples if not in aix3aDB')
