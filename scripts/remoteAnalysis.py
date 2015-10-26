@@ -318,14 +318,20 @@ def expandFiles(gpdir, gpfilestring):
     gppaths = [filename for sublist in [glob.glob(p) for p in [os.path.join(gpdir,f) for f in gpfiles]] for filename in sublist]
     return gppaths
 
-def getJobChunks(files, eventsperjob, filesperjob, maxeventsoption, skipeventsoption, test):
-    if test:
-        return [ [maxeventsoption, "100", files[0]['path'] ]]
-    if eventsperjob and not filesperjob:
-        result = determineJobChunksByEvents(files, eventsperjob)
-        return [[maxeventsoption, str(eventsperjob), skipeventsoption, str(skip)]+x for (skip, x) in result]
-    elif filesperjob:
-        result = determineJobChunksByFiles(files, filesperjob)
+def getJobChunks(files, options):
+    if options.test:
+        return [ [options.maxeventsoption, "100", "--PXLIO_FILE" , files[0]['path'] ]]
+    if options.eventsperjob and not options.filesperjob:
+        result = determineJobChunksByEvents(files, options.eventsperjob)
+        return [ [ options.maxeventsoption,
+                   str(options.eventsperjob),
+                   options.skipeventsoption,
+                   str(skip)]+x
+                   for (skip, x) in result]
+    elif options.filesperjob:
+        print "type options.filesperjob"
+        print type(options.filesperjob)
+        result = determineJobChunksByFiles(files, options.filesperjob)
         return result
     raise Exception("Please specify either eventsperjob or filesperjob")
 
