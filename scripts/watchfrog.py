@@ -22,6 +22,7 @@ import gridFunctions
 # Command line parsing is added in commandline_parsing
 import crabFunctions
 
+from music_crab3 import readSampleFile as readMusicCrabConfig
 
 serverLock = threading.Lock()
 optionsLock = threading.Lock()
@@ -111,14 +112,23 @@ def runGui(stdscr , options ):
     lastUpdate=datetime.datetime.now()
 
     # get all needed tasks
-    crabFolderList = getAllCrabFolders(options)
-    tasknameList = []
-    for folder in crabFolderList:
-        tasknameList.append( folder.replace("crab_","") )
+    if options.musicCrab3Input:
+        tasknameList = options.musicCrabSamples
+    else:
+        crabFolderList = getAllCrabFolders(options)
+        tasknameList = []
+        for folder in crabFolderList:
+            tasknameList.append( folder.replace("crab_","") )
 
     logText.clear()
     resubmitList = []
-    overview = Overview(stdscr, tasknameList , resubmitList, job_q , options.dblink)
+    if options.musicCrab3Input:
+        overview = Overview( stdscr, tasknameList , resubmitList, job_q , options.dblink,
+                             options.globalTag,
+                             options.skimmerTag,
+                             options.jsonFile )
+    else:
+        overview = Overview( stdscr, tasknameList , resubmitList, job_q , options.dblink )
 
     logText._redraw()
     updateFlag = True
@@ -312,7 +322,10 @@ def getAllCrabFolders(options):
 
 
 class Overview:
-    def __init__(self, stdscr, taskNameList, resubmitList, shared_job_q, dblink):
+    def __init__(self, stdscr, taskNameList, resubmitList, shared_job_q, dblink,
+                default_globalTag = None,
+                default_skimmer_version = None,
+                default_json_file =  None):
         self.level = 0
         self.taskId = 0
         self.cursor = 0
@@ -388,6 +401,9 @@ class Overview:
             else:
                 # yellow
                 printmode = curses.color_pair(3)
+        elif task.state.startswith("CREATED:"):
+            # yellow
+            printmode = curses.color_pair(3)
         elif "COMPLETE" in task.state:
             #green
             printmode = curses.color_pair(2)
@@ -480,6 +496,12 @@ def commandline_parsing():
                             'patterns only, comma separated values. ' \
                             'E.g. --only QCD* ). [default: %default]' )
     parser.add_argument( '-u','--user', help='Alternative username [default is HN-username]')
+    parser.add_argument('-m', '--musicCrab3Input',  type=str, nargs='+',
+                   help='A list of music_crab input files. Monitores global progress via db')
+    parser.add_argument( '-g','--globalTag', help='Global tag to be used for db queries if no crabConfig is found')
+    parser.add_argument( '-s','--skimmerTag', help='SkimmerTag to be used if no crabConfig found')
+    parser.add_argument( '-j','--jsonFile', help='Json to be used if no crabConfig found')
+    parser.add_argument( '-c','--clearFinal', help='clearFinal')
     parser.add_argument( '--workingArea',metavar='DIR',help='The area (full or relative path) where the CRAB project directories are saved. ' \
                      'Defaults to the current working directory.'       )
     parser.add_argument( '--updateInterval', default=600,help='Time between two updates for crab tasks in seconds.')
@@ -491,9 +513,32 @@ def commandline_parsing():
     parsingController = crabFunctions.CrabController()
     # we need to add the parser options from other modules
     #get crab command line options
-    parsingController.commandlineOptions(parser)
+    #~ parsingController.commandlineOptions(parser)
 
-    (options, args ) = parser.parse_args()
+    options = parser.parse_args()
+
+    if options.musicCrab3Input:
+        options.maxJobRuntimeMin = -1
+        options.config = ""
+        options.config_dir = ""
+        options.unitsPerJob = -1
+        options.musicCrabSamples = []
+
+        for path in options.musicCrab3Input:
+            print "reading",path
+            outdict = readMusicCrabConfig( path, options )
+            musicCrabSamples = outdict['sampledict'].keys()
+            options.musicCrabSamples += musicCrabSamples
+        if not options.globalTag:
+            print "no --globalTag specified, will only check samples with existing crabConfig"
+            options.globalTag = None
+        if not options.skimmerTag:
+            print "no --skimmerTag specified, will only check samples with existing crabConfig"
+            options.skimmerTag = None
+        if not options.jsonFile:
+            print "no --jsonFile specified, will only check samples with existing crabConfig"
+            options.jsonFile = None
+
     now = datetime.datetime.now()
     isodatetime = now.strftime( "%Y-%m-%d_%H.%M.%S" )
     options.isodatetime = isodatetime
