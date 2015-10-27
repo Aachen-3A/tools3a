@@ -3,7 +3,7 @@ from multiprocessing import Process, Condition, Lock
 from multiprocessing.managers import BaseManager
 import threading
 import os,glob,sys
-import optparse
+import argparse
 import logging
 import fnmatch
 import datetime
@@ -46,11 +46,11 @@ def runserver( options, args):
 #~ def main( options , args):
 def main(  ):
     print printFrogArt()
-    (options, args ) = commandline_parsing()
+    options = commandline_parsing()
     #~ curseshelpers.outputWrapper(runGui, 5,options,args)
-    curses.wrapper(runGui, options, args)
+    curses.wrapper(runGui, options )
 
-def runGui(stdscr , options, args):
+def runGui(stdscr , options ):
     class CrabManager( multiprocessing.managers.BaseManager ):
         pass
     job_q = multiprocessing.Queue()
@@ -473,16 +473,17 @@ def formatedUnixTimestamp (unixTimeStamp):
 
 
 def commandline_parsing():
-    parser = optparse.OptionParser( description='Watchfrog helps you to care for your jobs',  usage='usage: %prog [options]' )
-    parser.add_option( '-o', '--only', metavar='PATTERNS', default=None,
+    descr = 'Watchfrog a tool for interactive monitoring of PxlSkim campaigns'
+    parser = argparse.ArgumentParser(description= descr)
+    parser.add_argument( '-o', '--only', metavar='PATTERNS', default=None,
                        help='Only check samples matching PATTERNS (bash-like ' \
                             'patterns only, comma separated values. ' \
                             'E.g. --only QCD* ). [default: %default]' )
-    parser.add_option( '-u','--user', help='Alternative username [default is HN-username]')
-    parser.add_option( '--workingArea',metavar='DIR',help='The area (full or relative path) where the CRAB project directories are saved. ' \
+    parser.add_argument( '-u','--user', help='Alternative username [default is HN-username]')
+    parser.add_argument( '--workingArea',metavar='DIR',help='The area (full or relative path) where the CRAB project directories are saved. ' \
                      'Defaults to the current working directory.'       )
-    parser.add_option( '--updateInterval', default=600,help='Time between two updates for crab tasks in seconds.')
-    parser.add_option( '--nCores', default=multiprocessing.cpu_count(),help='Number of cores to use [default: %default]')
+    parser.add_argument( '--updateInterval', default=600,help='Time between two updates for crab tasks in seconds.')
+    parser.add_argument( '--nCores', default=multiprocessing.cpu_count(),help='Number of cores to use [default: %default]')
 
 
 
@@ -521,7 +522,7 @@ def commandline_parsing():
     if not options.user:
         options.user = parsingController.checkusername()
 
-    return (options, args )
+    return options
 
 if __name__ == '__main__':
     # get command line arguments
