@@ -149,11 +149,11 @@ def runGui(stdscr , options ):
         # check if new update should be started and add crabTasks to q
         if lastUpdate+datetime.timedelta(seconds=options.updateInterval)<datetime.datetime.now() or updateFlag:
             tasks = overview.tasks
+
             #filter tasks which are still updating
             tasks = filter(lambda task: not task.isUpdating, tasks)
             # check if we can skip crab for finalized samples
-            [task.isFinal for task in tasks if "NOSTATE" in task.state]
-            #filter tasks which are already marked as complete
+            #filter tasks which are already marked as final
             tasks[:] = [task for task in tasks if not task.state =="FINAL" ]
 
             optionsLock.acquire()
@@ -175,14 +175,12 @@ def runGui(stdscr , options ):
 
         overview.update()
         try:
-            #~ finishedTask = options.shared_result_q.get()
-            #~ mylogger.info("Tring to get updated Task from queue")
-
             finishedTask = options.shared_result_q.get_nowait()
             overview.tasks[:] = [task for task in overview.tasks if not finishedTask.uuid == task.uuid]
             mylogger.info("Appending Task %s with update time %s"% ( finishedTask.name, finishedTask.lastUpdate ) )
             overview.tasks.insert(finishedTask.taskId, finishedTask)
             overview.taskStats = crabFunctions.TaskStats( overview.tasks )
+            overview.update()
         except Queue.Empty:
             pass
 
@@ -234,7 +232,7 @@ def runGui(stdscr , options ):
             overview.currentView.end()
         elif c == 10:   #enter key
             overview.down()
-        time.sleep(0.01)
+        time.sleep(0.004)
     # free shell from curses
     curses.nocbreak(); stdscr.keypad(0); curses.echo()
     curses.endwin()
