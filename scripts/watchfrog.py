@@ -137,7 +137,15 @@ def runGui(stdscr , options ):
         count+=1
         stdscr.addstr(2, 0, "Next update {0}       ".format(timerepr(lastUpdate+datetime.timedelta(seconds=options.updateInterval)-datetime.datetime.now())))
         overview.currentView.refresh()
-        #~ ch.receive()
+        #filter tasks which should be dropped
+        lenbefore = len(overview.tasks)
+        overview.tasks[:] = [task for task in overview.tasks if not task.state =="DROP" ]
+        if lenbefore  > len(overview.tasks):
+            overview.level= 0
+            overview.renewTaskOverviews()
+            overview.stdscr.clear()
+            if len(overview.tasks)==0: break
+
         # check if new update should be started and add crabTasks to q
         if lastUpdate+datetime.timedelta(seconds=options.updateInterval)<datetime.datetime.now() or updateFlag:
             tasks = overview.tasks
@@ -202,6 +210,16 @@ def runGui(stdscr , options ):
             updateFlag = True
         elif c == ord('r'):
             overview.resubmit_currentTask()
+        elif c == ord('f'):
+            for task in overview.tasks:
+                if task.state == "FINAL":
+                    task.state = "DROP"
+                overview.currentTask = 0
+                overview.update()
+        elif c == ord('c'):
+            for task in overview.tasks:
+                if task.state == "COMPLETED":
+                    task.state = "DROP"
         elif c == curses.KEY_DOWN:
             overview.currentView.goDown()
         elif c == curses.KEY_UP:
@@ -346,12 +364,7 @@ class Overview:
         self.tasktable = curseshelpers.SelectTable(stdscr, top=4, height=self.height, maxrows=50+len(self.tasks))
         widths=[5, 100, 13, 11, 11, 11, 11, 11, 11, 11 , 11, 20]
         self.tasktable.setColHeaders(["#","Task", "Status", "nJobs", "Unsubmitted", "Idle", "Run.","Cooloff","Fail.","Trans","Finished", "last Update"],widths)
-        for task in self.tasks:
-            #~ taskOverview = curseshelpers.SelectTable(stdscr, top=4, height=self.height, maxrows=100+task.nJobs)
-            taskOverview = curseshelpers.SelectTable(stdscr, top=4, height=self.height, maxrows=50+task.nJobs)
-            self.taskOverviews.append(taskOverview)
-            widths=[5, 15, 22, 5, 5, 35 ,20 ,20 ,20]
-            taskOverview.setColHeaders(["#","JobID", "State", "Retries", "Restarts", "Sites","SubmitTime" , "StartTime","EndTime"], widths)
+        self.renewTaskOverviews()
         self.taskStats = crabFunctions.TaskStats(self.tasks)
         self.currentView = self.tasktable
 
@@ -360,10 +373,19 @@ class Overview:
     def __del__(self):
         serverLock.release()
 
+    def renewTaskOverviews(self):
+         for task in self.tasks:
+            #~ taskOverview = curseshelpers.SelectTable(stdscr, top=4, height=self.height, maxrows=100+task.nJobs)
+            taskOverview = curseshelpers.SelectTable(self.stdscr, top=4, height=self.height, maxrows=50+task.nJobs)
+            self.taskOverviews.append(taskOverview)
+            widths=[5, 15, 22, 5, 5, 35 ,20 ,20 ,20]
+            taskOverview.setColHeaders(["#","JobID", "State", "Retries", "Restarts", "Sites","SubmitTime" , "StartTime","EndTime"], widths)
+
     def update(self):
         self.tasktable.clear()
 
         for (taskId, taskOverview, task) in zip(range(len(self.tasks)), self.taskOverviews, self.tasks):
+
             printmode = self.getPrintmode(task)
             task.taskId = taskId
             cells = [task.taskId, task.name ,task.state ,task.nJobs , task.nUnsubmitted , task.nIdle, task.nRunning , task.nCooloff , task.nFailed, task.nTransferring , task.nFinished , task.lastUpdate]
@@ -390,7 +412,7 @@ class Overview:
                 except:
                     pass
         self.tasktable.refresh()
-        cells = [self.taskStats.nTasks, "Tasks total", "Job Stats" , sum(len(t.jobs) for t in self.tasks ) , self.taskStats.nUnsubmitted, self.taskStats.nIdle, self.taskStats.nRunning, self.taskStats.nCooloff,self.taskStats.nFailed, self.taskStats.nTransferring , self.taskStats.nFinished ]
+        cells = [self.taskStats.nTasks, "Tasks total", "Job Stats" , sum(t.nJobs for t in self.tasks ) , self.taskStats.nUnsubmitted, self.taskStats.nIdle, self.taskStats.nRunning, self.taskStats.nCooloff,self.taskStats.nFailed, self.taskStats.nTransferring , self.taskStats.nFinished ]
         self.tasktable.setFooters(cells)
         self._refresh()
 
@@ -465,7 +487,7 @@ def addInfoHeader(stdscr, options):
     stdscr.addstr(0, 0, ("{0:^"+str(stdscr.getmaxyx()[1])+"}").format("watchfrog quark...quark"), curses.A_REVERSE)
     #~ self.stdscr.addstr(0, 0, ("{0:^"+str(self.stdscr.getmaxyx()[1])+"}").format(self.asciiFrog), curses.A_REVERSE)
     #~ self.stdscr.addstr(8, 0, "Exit: q  Raise/lower update interval: +/- ("+str(options.updateInterval)+"s)  Update:  <SPACE>")
-    stdscr.addstr(1, 0, "Exit: q  Raise/lower update interval: +/- ("+str(options.updateInterval)+"s)  Update Task:  <SPACE> Update all: <u> Resubmit failed: <r>")
+    stdscr.addstr(1, 0, "Exit: q  Raise/lower update interval: +/- ("+str(options.updateInterval)+"s)  Update Task:  <SPACE> Update all: <u> Resubmit failed: <r> clear final: <f> clear completed: <c>")
 
 def createDBlink():
     # Create a database object.
