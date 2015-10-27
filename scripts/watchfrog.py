@@ -335,7 +335,12 @@ class Overview:
         self.tasks = []
         # can be deleted in cleanup ?
         for taskName in taskNameList:
-            self.tasks.append( crabFunctions.CrabTask( taskName, initUpdate = False, dblink= dblink) )
+            self.tasks.append( crabFunctions.CrabTask( taskName,
+                initUpdate = False,
+                dblink= dblink,
+                globalTag = default_globalTag,
+                skimmer_version = default_skimmer_version,
+                json_file = default_json_file ) )
         self.height=stdscr.getmaxyx()[0]-16
         self.height=stdscr.getmaxyx()[0]-16
         self.tasktable = curseshelpers.SelectTable(stdscr, top=4, height=self.height, maxrows=50+len(self.tasks))
